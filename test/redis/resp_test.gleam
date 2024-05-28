@@ -1,0 +1,30 @@
+import gleeunit/should
+import redis/resp
+
+pub fn parse_simple_string_pong_test() {
+  <<"+PONG\r\n":utf8>>
+  |> resp.parse
+  |> should.be_ok
+  |> should.equal(resp.SimpleString("PONG"))
+}
+
+pub fn fail_parse_simple_string_with_crlf_test() {
+  <<"+PO\r\nNG\r\n":utf8>>
+  |> resp.parse
+  |> should.be_error
+  |> should.equal(resp.UnexpectedInput(<<"\r\nNG\r\n":utf8>>))
+}
+
+pub fn fail_parse_simple_string_abrupt_end_test() {
+  <<"+PONG":utf8>>
+  |> resp.parse
+  |> should.be_error
+  |> should.equal(resp.UnexpectedEnd)
+}
+
+pub fn fail_parse_simple_string_invalid_end_test() {
+  <<"+PONG\n":utf8>>
+  |> resp.parse
+  |> should.be_error
+  |> should.equal(resp.UnexpectedEnd)
+}
