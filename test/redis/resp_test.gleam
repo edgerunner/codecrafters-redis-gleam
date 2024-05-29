@@ -28,3 +28,10 @@ pub fn fail_parse_simple_string_invalid_end_test() {
   |> should.be_error
   |> should.equal(resp.UnexpectedEnd)
 }
+
+pub fn parse_bulk_string_echo_test() {
+  <<"$4\r\nECHO\r\n":utf8>>
+  |> resp.parse
+  |> should.be_ok
+  |> should.equal(resp.BulkString("ECHO"))
+}
