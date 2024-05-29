@@ -42,3 +42,10 @@ pub fn fail_parse_bulk_string_without_terminator_test() {
   |> should.be_error
   |> should.equal(resp.UnexpectedEnd)
 }
+
+pub fn fail_parse_bulk_string_with_longer_length_test() {
+  <<"$8\r\nECHO\r\n":utf8>>
+  |> resp.parse
+  |> should.be_error
+  |> should.equal(resp.UnexpectedEnd)
+}
