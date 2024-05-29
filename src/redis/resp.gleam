@@ -13,6 +13,7 @@ pub type ParseError {
 }
 
 import gleam/bit_array
+import gleam/bool
 import gleam/int
 import gleam/result
 import gleam/string
@@ -50,6 +51,14 @@ fn parse_bulk_string(input: BitArray) -> Result(Resp, ParseError) {
   let slice =
     bit_array.slice(from: rest, at: 0, take: length)
     |> result.replace_error(UnexpectedEnd)
+  let terminator =
+    bit_array.slice(from: rest, at: length, take: 2)
+    |> result.replace_error(UnexpectedEnd)
+  use terminator <- result.then(terminator)
+  use <- bool.guard(
+    when: terminator != crlf,
+    return: Error(UnexpectedInput(terminator)),
+  )
   use slice <- result.then(slice)
   let string =
     bit_array.to_string(slice)

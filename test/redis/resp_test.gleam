@@ -35,3 +35,10 @@ pub fn parse_bulk_string_echo_test() {
   |> should.be_ok
   |> should.equal(resp.BulkString("ECHO"))
 }
+
+pub fn fail_parse_bulk_string_without_terminator_test() {
+  <<"$4\r\nECHO":utf8>>
+  |> resp.parse
+  |> should.be_error
+  |> should.equal(resp.UnexpectedEnd)
+}
