@@ -47,24 +47,12 @@ fn parse_simple_string(input: BitArray) -> Result(Resp, ParseError) {
 }
 
 fn parse_bulk_string(input: BitArray) -> Result(Resp, ParseError) {
-  use #(length, rest): #(Int, BitArray) <- result.then(parse_length(input, 0))
-  let slice =
-    bit_array.slice(from: rest, at: 0, take: length)
-    |> result.replace_error(UnexpectedEnd)
-  let terminator =
-    bit_array.slice(from: rest, at: length, take: 2)
-    |> result.replace_error(UnexpectedEnd)
-  use terminator <- result.then(terminator)
-  use <- bool.guard(
-    when: terminator != crlf,
-    return: Error(UnexpectedInput(terminator)),
-  )
-  use slice <- result.then(slice)
-  let string =
-    bit_array.to_string(slice)
-    |> result.replace_error(InvalidUTF8)
-  use string <- result.map(string)
-  BulkString(string)
+  use #(length, rest) <- result.then(parse_length(input, 0))
+  use #(bulk, rest) <- result.then(parse_slice(rest, length))
+  use rest <- result.then(parse_crlf(rest))
+  bit_array.to_string(bulk)
+  |> result.replace_error(InvalidUTF8)
+  |> result.map(BulkString)
 }
 
 fn parse_length(
@@ -82,4 +70,31 @@ fn parse_length(
 
     _, _ -> Error(InvalidLength)
   }
+}
+
+fn parse_crlf(input: BitArray) -> Result(BitArray, ParseError) {
+  case input {
+    <<"\r\n":utf8, rest:bits>> -> Ok(rest)
+    <<>> -> Error(UnexpectedEnd)
+    _ -> Error(UnexpectedInput(input))
+  }
+}
+
+fn parse_slice(
+  input: BitArray,
+  length: Int,
+) -> Result(#(BitArray, BitArray), ParseError) {
+  let slice =
+    bit_array.slice(from: input, at: 0, take: length)
+    |> result.replace_error(InvalidLength)
+  let rest =
+    bit_array.slice(
+      from: input,
+      at: length,
+      take: bit_array.byte_size(input) - length,
+    )
+    |> result.replace_error(InvalidLength)
+  use slice <- result.then(slice)
+  use rest <- result.then(rest)
+  Ok(#(slice, rest))
 }
