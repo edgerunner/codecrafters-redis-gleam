@@ -28,7 +28,7 @@ pub fn parse(input: BitArray) -> Parse(Resp) {
   case input {
     <<"+":utf8, rest:bits>> -> parse_simple_string(rest)
     <<"$":utf8, rest:bits>> -> parse_bulk_string(rest)
-    <<"*":utf8, rest:bits>> -> todo
+    <<"*":utf8, rest:bits>> -> parse_array(rest)
     unexpected -> Error(UnexpectedInput(unexpected))
   }
 }
@@ -53,7 +53,7 @@ fn parse_simple_string(input: BitArray) -> Parse(Resp) {
 fn parse_bulk_string(input: BitArray) -> Parse(Resp) {
   use #(length, rest) <- result.then(parse_length(input, 0))
   use #(bulk, rest) <- result.then(parse_slice(rest, length))
-  use _rest <- result.then(parse_crlf(rest))
+  use #(Nil, rest) <- result.then(parse_crlf(rest))
   bit_array.to_string(bulk)
   |> result.replace_error(InvalidUTF8)
   |> result.map(BulkString)
@@ -96,4 +96,19 @@ fn parse_slice(input: BitArray, length: Int) -> Parse(BitArray) {
   use slice <- result.then(slice)
   use rest <- result.then(rest)
   Ok(#(slice, rest))
+}
+
+import gleam/iterator
+import gleam/list
+
+fn parse_array(input: BitArray) -> Parse(Resp) {
+  use #(length, rest) <- result.then(parse_length(input, 0))
+  let slots = iterator.range(from: 1, to: length)
+  use #(array, rest), _slot <- iterator.try_fold(over: slots, from: #(
+    Array([]),
+    rest,
+  ))
+  use #(resp, rest) <- result.map(parse(rest))
+  let assert Array(array) = array
+  #(Array(list.append(array, [resp])), rest)
 }

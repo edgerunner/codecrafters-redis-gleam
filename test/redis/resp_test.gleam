@@ -1,3 +1,4 @@
+import gleam/io
 import gleam/pair
 import gleeunit/should
 import redis/resp
@@ -52,4 +53,13 @@ pub fn fail_parse_bulk_string_with_longer_length_test() {
   |> resp.parse
   |> should.be_error
   |> should.equal(resp.InvalidLength)
+}
+
+pub fn parse_array_echo_hey_test() {
+  <<"*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n":utf8>>
+  |> resp.parse
+  |> io.debug
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.Array([resp.BulkString("ECHO"), resp.BulkString("hey")]))
 }
