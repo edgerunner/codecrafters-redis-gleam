@@ -63,3 +63,11 @@ pub fn parse_array_echo_hey_test() {
   |> pair.first
   |> should.equal(resp.Array([resp.BulkString("ECHO"), resp.BulkString("hey")]))
 }
+
+pub fn fail_parse_array_with_wrong_length_test() {
+  <<"*3\r\n$4\r\nECHO\r\n$3\r\nhey\r\n":utf8>>
+  |> resp.parse
+  |> io.debug
+  |> should.be_error
+  |> should.equal(resp.InvalidLength)
+}

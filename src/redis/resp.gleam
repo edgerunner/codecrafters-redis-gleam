@@ -109,7 +109,10 @@ fn parse_array(input: BitArray) -> Parse(Resp) {
       [],
       rest,
     ))
-    use #(resp, rest) <- result.map(parse(rest))
+    let parsed =
+      parse(rest)
+      |> result.replace_error(InvalidLength)
+    use #(resp, rest) <- result.map(parsed)
 
     #([resp, ..array], rest)
   }
