@@ -71,3 +71,11 @@ pub fn fail_parse_array_with_wrong_length_test() {
   |> should.be_error
   |> should.equal(resp.InvalidLength)
 }
+
+pub fn fail_parse_array_with_failing_element_test() {
+  <<"*3\r\n+ECHO\r\n+he\ny\r\n":utf8>>
+  |> resp.parse
+  |> io.debug
+  |> should.be_error
+  |> should.equal(resp.UnexpectedInput(<<"\ny\r\n":utf8>>))
+}

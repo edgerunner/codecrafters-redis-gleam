@@ -109,12 +109,12 @@ fn parse_array(input: BitArray) -> Parse(Resp) {
       [],
       rest,
     ))
-    let parsed =
-      parse(rest)
-      |> result.replace_error(InvalidLength)
-    use #(resp, rest) <- result.map(parsed)
 
-    #([resp, ..array], rest)
+    case parse(rest) {
+      Ok(#(resp, rest)) -> Ok(#([resp, ..array], rest))
+      Error(UnexpectedInput(<<>>)) -> Error(InvalidLength)
+      Error(e) -> Error(e)
+    }
   }
   use #(array, rest) <- result.map(array)
   #(array |> list.reverse |> Array, rest)
