@@ -104,11 +104,15 @@ import gleam/list
 fn parse_array(input: BitArray) -> Parse(Resp) {
   use #(length, rest) <- result.then(parse_length(input, 0))
   let slots = iterator.range(from: 1, to: length)
-  use #(array, rest), _slot <- iterator.try_fold(over: slots, from: #(
-    Array([]),
-    rest,
-  ))
-  use #(resp, rest) <- result.map(parse(rest))
-  let assert Array(array) = array
-  #(Array(list.append(array, [resp])), rest)
+  let array = {
+    use #(array, rest), _slot <- iterator.try_fold(over: slots, from: #(
+      [],
+      rest,
+    ))
+    use #(resp, rest) <- result.map(parse(rest))
+
+    #([resp, ..array], rest)
+  }
+  use #(array, rest) <- result.map(array)
+  #(array |> list.reverse |> Array, rest)
 }
