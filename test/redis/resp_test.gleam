@@ -81,7 +81,7 @@ pub fn parse_null_test() {
   |> resp.parse
   |> should.be_ok
   |> pair.first
-  |> should.equal(resp.Null)
+  |> should.equal(resp.Null(resp.NullPrimitive))
 }
 
 pub fn fail_parse_null_with_content_test() {
@@ -89,4 +89,20 @@ pub fn fail_parse_null_with_content_test() {
   |> resp.parse
   |> should.be_error
   |> should.equal(resp.UnexpectedInput(<<"no!\r\n":utf8>>))
+}
+
+pub fn parse_null_string_test() {
+  <<"$-1\r\n":utf8>>
+  |> resp.parse
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.Null(resp.NullString))
+}
+
+pub fn parse_null_array_test() {
+  <<"*-1\r\n":utf8>>
+  |> resp.parse
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.Null(resp.NullArray))
 }
