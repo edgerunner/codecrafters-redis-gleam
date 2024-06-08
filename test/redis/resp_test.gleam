@@ -79,3 +79,20 @@ pub fn fail_parse_array_with_failing_element_test() {
   |> should.be_error
   |> should.equal(resp.UnexpectedInput(<<"\ny\r\n":utf8>>))
 }
+
+pub fn parse_null_test() {
+  <<"_\r\n":utf8>>
+  |> resp.parse
+  |> io.debug
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.Null)
+}
+
+pub fn fail_parse_null_with_content_test() {
+  <<"_no!\r\n":utf8>>
+  |> resp.parse
+  |> io.debug
+  |> should.be_error
+  |> should.equal(resp.UnexpectedInput(<<"no!\r\n":utf8>>))
+}

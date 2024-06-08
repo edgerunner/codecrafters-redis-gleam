@@ -2,6 +2,7 @@ pub type Resp {
   SimpleString(String)
   BulkString(String)
   Array(List(Resp))
+  Null
 }
 
 pub type ParseError {
@@ -26,11 +27,17 @@ const crlf = <<"\r\n":utf8>>
 
 pub fn parse(input: BitArray) -> Parse(Resp) {
   case input {
+    <<"_":utf8, rest:bits>> -> parse_null(rest)
     <<"+":utf8, rest:bits>> -> parse_simple_string(rest)
     <<"$":utf8, rest:bits>> -> parse_bulk_string(rest)
     <<"*":utf8, rest:bits>> -> parse_array(rest)
     unexpected -> Error(UnexpectedInput(unexpected))
   }
+}
+
+fn parse_null(input: BitArray) -> Parse(Resp) {
+  use #(_, rest) <- result.map(parse_crlf(input))
+  #(Null, rest)
 }
 
 fn parse_simple_string(input: BitArray) -> Parse(Resp) {
