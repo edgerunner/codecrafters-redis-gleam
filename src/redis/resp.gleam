@@ -133,3 +133,40 @@ fn parse_array(input: BitArray) -> Parse(Resp) {
   use #(array, rest) <- result.map(array)
   #(array |> list.reverse |> Array, rest)
 }
+
+pub fn encode(resp: Resp) -> BitArray {
+  case resp {
+    Null(n) -> encode_null(n)
+    SimpleString(s) -> encode_simple_string(s)
+    BulkString(s) -> encode_bulk_string(s)
+    Array(a) -> encode_array(a)
+  }
+}
+
+fn encode_null(null_type: NullType) -> BitArray {
+  case null_type {
+    NullPrimitive -> <<"_":utf8, crlf:bits>>
+    NullString -> <<"$-1":utf8, crlf:bits>>
+    NullArray -> <<"*-1":utf8, crlf:bits>>
+  }
+}
+
+fn encode_simple_string(string: String) -> BitArray {
+  <<"+":utf8, string:utf8, crlf:bits>>
+}
+
+fn encode_bulk_string(string: String) -> BitArray {
+  let length = encode_length(string.length(string))
+  <<"$":utf8, length:bits, string:utf8, crlf:bits>>
+}
+
+fn encode_length(length: Int) -> BitArray {
+  <<int.to_string(length):utf8, crlf:bits>>
+}
+
+fn encode_array(array: List(Resp)) -> BitArray {
+  let length = encode_length(list.length(array))
+  let preamble = <<"*":utf8, length:bits>>
+  use buffer, resp <- list.fold(over: array, from: preamble)
+  <<buffer:bits, encode(resp):bits>>
+}

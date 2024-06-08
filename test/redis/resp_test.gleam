@@ -106,3 +106,45 @@ pub fn parse_null_array_test() {
   |> pair.first
   |> should.equal(resp.Null(resp.NullArray))
 }
+
+pub fn encode_simple_string_pong_test() {
+  resp.SimpleString("PONG")
+  |> resp.encode
+  |> should.equal(<<"+PONG\r\n":utf8>>)
+}
+
+pub fn encode_null_test() {
+  resp.Null(resp.NullPrimitive)
+  |> resp.encode
+  |> should.equal(<<"_\r\n":utf8>>)
+}
+
+pub fn encode_bulk_string_echo_test() {
+  resp.BulkString("ECHO")
+  |> resp.encode
+  |> should.equal(<<"$4\r\nECHO\r\n":utf8>>)
+}
+
+pub fn encode_empty_array_test() {
+  resp.Array([])
+  |> resp.encode
+  |> should.equal(<<"*0\r\n":utf8>>)
+}
+
+pub fn encode_array_of_simple_strings_test() {
+  resp.Array([resp.SimpleString("Hello"), resp.SimpleString("World!")])
+  |> resp.encode
+  |> should.equal(<<"*2\r\n+Hello\r\n+World!\r\n":utf8>>)
+}
+
+pub fn encode_nested_array_test() {
+  resp.Array([
+    resp.SimpleString("ECHO"),
+    resp.Array([resp.BulkString("Hello"), resp.BulkString("World!")]),
+    resp.Null(resp.NullPrimitive),
+  ])
+  |> resp.encode
+  |> should.equal(<<
+    "*3\r\n+ECHO\r\n*2\r\n$5\r\nHello\r\n$6\r\nWorld!\r\n_\r\n":utf8,
+  >>)
+}
