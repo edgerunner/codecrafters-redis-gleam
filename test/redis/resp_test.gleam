@@ -1,4 +1,3 @@
-import gleam/io
 import gleam/pair
 import gleeunit/should
 import redis/resp
@@ -58,7 +57,6 @@ pub fn fail_parse_bulk_string_with_longer_length_test() {
 pub fn parse_array_echo_hey_test() {
   <<"*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n":utf8>>
   |> resp.parse
-  |> io.debug
   |> should.be_ok
   |> pair.first
   |> should.equal(resp.Array([resp.BulkString("ECHO"), resp.BulkString("hey")]))
@@ -67,7 +65,6 @@ pub fn parse_array_echo_hey_test() {
 pub fn fail_parse_array_with_wrong_length_test() {
   <<"*3\r\n$4\r\nECHO\r\n$3\r\nhey\r\n":utf8>>
   |> resp.parse
-  |> io.debug
   |> should.be_error
   |> should.equal(resp.InvalidLength)
 }
@@ -75,7 +72,6 @@ pub fn fail_parse_array_with_wrong_length_test() {
 pub fn fail_parse_array_with_failing_element_test() {
   <<"*3\r\n+ECHO\r\n+he\ny\r\n":utf8>>
   |> resp.parse
-  |> io.debug
   |> should.be_error
   |> should.equal(resp.UnexpectedInput(<<"\ny\r\n":utf8>>))
 }
@@ -83,7 +79,6 @@ pub fn fail_parse_array_with_failing_element_test() {
 pub fn parse_null_test() {
   <<"_\r\n":utf8>>
   |> resp.parse
-  |> io.debug
   |> should.be_ok
   |> pair.first
   |> should.equal(resp.Null)
@@ -92,7 +87,6 @@ pub fn parse_null_test() {
 pub fn fail_parse_null_with_content_test() {
   <<"_no!\r\n":utf8>>
   |> resp.parse
-  |> io.debug
   |> should.be_error
   |> should.equal(resp.UnexpectedInput(<<"no!\r\n":utf8>>))
 }

@@ -18,7 +18,6 @@ type Parse(a) =
 
 import gleam/bit_array
 import gleam/int
-import gleam/io
 import gleam/pair
 import gleam/result
 import gleam/string
