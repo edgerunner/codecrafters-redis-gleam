@@ -3,11 +3,13 @@ import gleam/bytes_builder
 import gleam/erlang
 import gleam/erlang/process
 import gleam/int
+import gleam/list
 import gleam/option.{type Option, None}
 import gleam/otp/actor
 import gleam/result
 import gleam/string
 import glisten.{type Connection, type Message, Packet, User}
+import redis/config.{type Config}
 import redis/resp.{type Resp}
 
 type Value {
@@ -15,8 +17,9 @@ type Value {
   Temporary(data: Resp, timeout: Int)
 }
 
-type State =
-  Set(String, Value)
+type State {
+  State(table: Set(String, Value), config: Config)
+}
 
 pub fn main() {
   let assert Ok(_) =
@@ -47,7 +50,7 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
 
         "SET", [key, value] -> {
           let assert Ok(key) = resp.to_string(key)
-          table.insert(state, [#(key, Permanent(value))])
+          table.insert(state.table, [#(key, Permanent(value))])
           let assert Ok(_) =
             resp.SimpleString("OK")
             |> send_resp(conn)
@@ -57,7 +60,7 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
         "SET", [key, value, expiry, timeout] -> {
           let assert Ok(key) = resp.to_string(key)
           let assert Ok(deadline) = posix_from_timeout(expiry, timeout)
-          table.insert(state, [#(key, Temporary(value, deadline))])
+          table.insert(state.table, [#(key, Temporary(value, deadline))])
           let assert Ok(_) =
             resp.SimpleString("OK")
             |> send_resp(conn)
@@ -68,13 +71,13 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
           let posix = erlang.system_time(erlang.Millisecond)
           let assert Ok(key) = resp.to_string(key)
           let assert Ok(_) =
-            case table.lookup(state, key) {
+            case table.lookup(state.table, key) {
               [] -> resp.Null(resp.NullString)
               [#(_, Permanent(value)), ..] -> value
               [#(_, Temporary(value, deadline)), ..] if deadline > posix ->
                 value
               [#(key, Temporary(_value, _deadline)), ..] -> {
-                table.delete(state, key)
+                table.delete(state.table, key)
                 resp.Null(resp.NullString)
               }
             }
@@ -82,8 +85,30 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
 
           actor.continue(state)
         }
+        "CONFIG", [subcommand, ..args] -> {
+          let assert Ok(subcommand) = resp.to_string(subcommand)
+          let assert Ok(_) = case string.uppercase(subcommand), args {
+            "GET", [key] -> {
+              let assert Ok(key) = resp.to_string(key)
+              case key {
+                "dir" -> state.config.dir
+                "dbfilename" -> state.config.dbfilename
+                _ -> None
+              }
+              |> option.map(resp.BulkString)
+              |> option.unwrap(resp.Null(resp.NullString))
+              |> list.wrap
+              |> list.prepend(resp.BulkString(key))
+              |> resp.Array
+              |> send_resp(conn)
+            }
+            _, _ -> todo
+          }
 
-        _, _ -> todo
+          actor.continue(state)
+        }
+
+        cmd, _ -> todo as { cmd <> " not implemented" }
       }
     }
     User(_) -> todo
@@ -113,7 +138,7 @@ fn posix_from_timeout(expiry: Resp, timeout: Resp) -> Result(Int, Nil) {
 
 const store_name = "redis_on_ets"
 
-fn init(_conn) -> #(Set(String, Value), Option(a)) {
+fn init(_conn) -> #(State, Option(a)) {
   let assert Ok(table) = {
     use <- result.lazy_or(table.ref(store_name))
 
@@ -125,6 +150,7 @@ fn init(_conn) -> #(Set(String, Value), Option(a)) {
     |> table.compression(False)
     |> table.set
   }
+  let assert Ok(config) = config.load()
 
-  #(table, None)
+  #(State(table, config), None)
 }
