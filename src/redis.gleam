@@ -29,19 +29,12 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
         "PING", _ -> {
           let assert Ok(_) =
             resp.SimpleString("PONG")
-            |> resp.encode
-            |> bytes_builder.from_bit_array
-            |> glisten.send(conn, _)
+            |> send_resp(conn)
 
           actor.continue(state)
         }
         "ECHO", [payload, ..] -> {
-          let assert Ok(_) =
-            payload
-            |> resp.encode
-            |> bytes_builder.from_bit_array
-            |> glisten.send(conn, _)
-
+          let assert Ok(_) = send_resp(payload, conn)
           actor.continue(state)
         }
 
@@ -50,10 +43,7 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
           table.insert(state, [#(key, value)])
           let assert Ok(_) =
             resp.SimpleString("OK")
-            |> resp.encode
-            |> bytes_builder.from_bit_array
-            |> glisten.send(conn, _)
-
+            |> send_resp(conn)
           actor.continue(state)
         }
 
@@ -64,9 +54,7 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
               [] -> resp.Null(resp.NullPrimitive)
               [#(_, value), ..] -> value
             }
-            |> resp.encode
-            |> bytes_builder.from_bit_array
-            |> glisten.send(conn, _)
+            |> send_resp(conn)
 
           actor.continue(state)
         }
@@ -76,6 +64,15 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
     }
     User(_) -> todo
   }
+}
+
+fn send_resp(
+  resp: Resp,
+  conn: Connection(a),
+) -> Result(Nil, glisten.SocketReason) {
+  resp.encode(resp)
+  |> bytes_builder.from_bit_array
+  |> glisten.send(conn, _)
 }
 
 const store_name = "redis_on_ets"
