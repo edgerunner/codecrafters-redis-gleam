@@ -150,7 +150,6 @@ fn init(_conn) -> #(State, Option(a)) {
     |> table.compression(False)
     |> table.set
   }
-  let assert Ok(config) = config.load()
 
-  #(State(table, config), None)
+  #(State(table, config.load()), None)
 }
