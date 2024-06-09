@@ -148,3 +148,24 @@ pub fn encode_nested_array_test() {
     "*3\r\n+ECHO\r\n*2\r\n$5\r\nHello\r\n$6\r\nWorld!\r\n_\r\n":utf8,
   >>)
 }
+
+pub fn convert_simple_string_to_string_test() {
+  resp.SimpleString("Great")
+  |> resp.to_string
+  |> should.be_ok
+  |> should.equal("Great")
+}
+
+pub fn convert_bulk_string_to_string_test() {
+  resp.SimpleString("Wonderful\r\nworld")
+  |> resp.to_string
+  |> should.be_ok
+  |> should.equal("Wonderful\r\nworld")
+}
+
+pub fn dont_convert_array_to_string_test() {
+  resp.Array([])
+  |> resp.to_string
+  |> should.be_error
+  |> should.equal(resp.Array([]))
+}

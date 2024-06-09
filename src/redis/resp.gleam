@@ -170,3 +170,11 @@ fn encode_array(array: List(Resp)) -> BitArray {
   use buffer, resp <- list.fold(over: array, from: preamble)
   <<buffer:bits, encode(resp):bits>>
 }
+
+pub fn to_string(resp: Resp) -> Result(String, Resp) {
+  case resp {
+    BulkString(bs) -> Ok(bs)
+    SimpleString(ss) -> Ok(ss)
+    _ -> Error(resp)
+  }
+}
