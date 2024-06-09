@@ -1,11 +1,7 @@
-import gleam/bit_array
 import gleam/bytes_builder
 import gleam/erlang/process
-import gleam/int
-import gleam/list
 import gleam/option.{None}
 import gleam/otp/actor
-import gleam/result
 import gleam/string
 import glisten.{type Connection, type Message, Packet, User}
 import redis/resp
