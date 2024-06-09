@@ -78,7 +78,7 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
   }
 }
 
-const store_name = "redis"
+const store_name = "redis_on_ets"
 
 fn init(_conn) -> #(Set(String, Resp), Option(a)) {
   let assert Ok(table) = {
@@ -86,7 +86,7 @@ fn init(_conn) -> #(Set(String, Resp), Option(a)) {
 
     table.build(store_name)
     |> table.privacy(table.Public)
-    |> table.write_concurrency(table.AutoWriteConcurrency)
+    |> table.write_concurrency(table.WriteConcurrency)
     |> table.read_concurrency(True)
     |> table.decentralized_counters(True)
     |> table.compression(False)
