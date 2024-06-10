@@ -1,6 +1,7 @@
 import gleam/option
 import gleeunit/should
 import redis/command
+import redis/config
 import redis/resp
 
 pub fn parse_ping_test() {
@@ -100,7 +101,7 @@ pub fn parse_config_get_dir_test() {
   |> resp.Array
   |> command.parse
   |> should.be_ok
-  |> should.equal(command.Config(command.ConfigGet(command.Dir)))
+  |> should.equal(command.Config(command.ConfigGet(config.Dir)))
 }
 
 pub fn parse_config_get_dbfilename_test() {
@@ -112,5 +113,5 @@ pub fn parse_config_get_dbfilename_test() {
   |> resp.Array
   |> command.parse
   |> should.be_ok
-  |> should.equal(command.Config(command.ConfigGet(command.DbFilename)))
+  |> should.equal(command.Config(command.ConfigGet(config.DbFilename)))
 }

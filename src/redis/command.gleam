@@ -3,6 +3,7 @@ import gleam/list
 import gleam/option.{type Option}
 import gleam/result
 import gleam/string
+import redis/config
 import redis/resp.{type Resp, Array, BulkString, Null, SimpleString}
 
 pub type Command {
@@ -14,12 +15,7 @@ pub type Command {
 }
 
 pub type ConfigSubcommand {
-  ConfigGet(ConfigParameter)
-}
-
-pub type ConfigParameter {
-  Dir
-  DbFilename
+  ConfigGet(config.Parameter)
 }
 
 pub type Error {
@@ -103,8 +99,8 @@ fn parse_config(args: List(Resp)) -> Result(Command, Error) {
   case subcommand, args {
     "GET", [BulkString(key)] ->
       case key {
-        "dir" -> Ok(Config(ConfigGet(Dir)))
-        "dbfilename" -> Ok(Config(ConfigGet(DbFilename)))
+        "dir" -> Ok(Config(ConfigGet(config.Dir)))
+        "dbfilename" -> Ok(Config(ConfigGet(config.DbFilename)))
         _ -> Error(InvalidArgument)
       }
     "GET", _ -> Error(InvalidArgument)

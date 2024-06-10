@@ -6,6 +6,11 @@ pub type Config {
   Config(dir: Option(String), dbfilename: Option(String))
 }
 
+pub type Parameter {
+  Dir
+  DbFilename
+}
+
 pub const default = Config(dir: None, dbfilename: None)
 
 pub fn load() -> Config {
@@ -15,5 +20,12 @@ pub fn load() -> Config {
     "--dir", dir -> Config(..config, dir: Some(dir))
     "--dbfilename", dbfilename -> Config(..config, dbfilename: Some(dbfilename))
     _, _ -> config
+  }
+}
+
+pub fn parameter_key(parameter: Parameter) -> String {
+  case parameter {
+    Dir -> "dir"
+    DbFilename -> "dbfilename"
   }
 }

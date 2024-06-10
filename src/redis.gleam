@@ -2,13 +2,12 @@ import carpenter/table.{type Set}
 import gleam/bytes_builder
 import gleam/erlang
 import gleam/erlang/process
-import gleam/int
 import gleam/list
-import gleam/option.{type Option, None}
+import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/result
-import gleam/string
 import glisten.{type Connection, type Message, Packet, User}
+import redis/command
 import redis/config.{type Config}
 import redis/resp.{type Resp}
 
@@ -33,23 +32,22 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
   case msg {
     Packet(resp_binary) -> {
       let assert Ok(#(resp, _)) = resp_binary |> resp.parse
-      let assert resp.Array([command, ..args]) = resp
-      let assert Ok(command) = resp.to_string(command)
-      case string.uppercase(command), args {
-        "PING", _ -> {
+
+      let assert Ok(command) = command.parse(resp)
+      case command {
+        command.Ping -> {
           let assert Ok(_) =
             resp.SimpleString("PONG")
             |> send_resp(conn)
 
           actor.continue(state)
         }
-        "ECHO", [payload, ..] -> {
+        command.Echo(payload) -> {
           let assert Ok(_) = send_resp(payload, conn)
           actor.continue(state)
         }
 
-        "SET", [key, value] -> {
-          let assert Ok(key) = resp.to_string(key)
+        command.Set(key: key, value: value, expiry: None) -> {
           table.insert(state.table, [#(key, Permanent(value))])
           let assert Ok(_) =
             resp.SimpleString("OK")
@@ -57,9 +55,8 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
           actor.continue(state)
         }
 
-        "SET", [key, value, expiry, timeout] -> {
-          let assert Ok(key) = resp.to_string(key)
-          let assert Ok(deadline) = posix_from_timeout(expiry, timeout)
+        command.Set(key: key, value: value, expiry: Some(expiry)) -> {
+          let deadline = erlang.system_time(erlang.Millisecond) + expiry
           table.insert(state.table, [#(key, Temporary(value, deadline))])
           let assert Ok(_) =
             resp.SimpleString("OK")
@@ -67,9 +64,8 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
           actor.continue(state)
         }
 
-        "GET", [key, ..] -> {
+        command.Get(key) -> {
           let posix = erlang.system_time(erlang.Millisecond)
-          let assert Ok(key) = resp.to_string(key)
           let assert Ok(_) =
             case table.lookup(state.table, key) {
               [] -> resp.Null(resp.NullString)
@@ -85,30 +81,24 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
 
           actor.continue(state)
         }
-        "CONFIG", [subcommand, ..args] -> {
-          let assert Ok(subcommand) = resp.to_string(subcommand)
-          let assert Ok(_) = case string.uppercase(subcommand), args {
-            "GET", [key] -> {
-              let assert Ok(key) = resp.to_string(key)
-              case key {
-                "dir" -> state.config.dir
-                "dbfilename" -> state.config.dbfilename
-                _ -> None
+        command.Config(subcommand) -> {
+          let assert Ok(_) = case subcommand {
+            command.ConfigGet(parameter) -> {
+              case parameter {
+                config.Dir -> state.config.dir
+                config.DbFilename -> state.config.dbfilename
               }
               |> option.map(resp.BulkString)
               |> option.unwrap(resp.Null(resp.NullString))
               |> list.wrap
-              |> list.prepend(resp.BulkString(key))
+              |> list.prepend(resp.BulkString(config.parameter_key(parameter)))
               |> resp.Array
               |> send_resp(conn)
             }
-            _, _ -> todo
           }
 
           actor.continue(state)
         }
-
-        cmd, _ -> todo as { cmd <> " not implemented" }
       }
     }
     User(_) -> todo
@@ -122,18 +112,6 @@ fn send_resp(
   resp.encode(resp)
   |> bytes_builder.from_bit_array
   |> glisten.send(conn, _)
-}
-
-fn posix_from_timeout(expiry: Resp, timeout: Resp) -> Result(Int, Nil) {
-  use expiry <- result.then(resp.to_string(expiry) |> result.nil_error)
-  use timeout <- result.then(resp.to_string(timeout) |> result.nil_error)
-  use timeout <- result.then(int.parse(timeout))
-  let posix = erlang.system_time(erlang.Millisecond)
-  case string.uppercase(expiry) {
-    "PX" -> Ok(posix + timeout)
-    "EX" -> Ok(posix + 1000 * timeout)
-    _ -> Error(Nil)
-  }
 }
 
 const store_name = "redis_on_ets"
