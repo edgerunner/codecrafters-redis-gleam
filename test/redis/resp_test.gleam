@@ -167,5 +167,4 @@ pub fn dont_convert_array_to_string_test() {
   resp.Array([])
   |> resp.to_string
   |> should.be_error
-  |> should.equal(resp.Array([]))
 }

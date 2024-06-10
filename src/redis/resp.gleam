@@ -171,10 +171,18 @@ fn encode_array(array: List(Resp)) -> BitArray {
   <<buffer:bits, encode(resp):bits>>
 }
 
-pub fn to_string(resp: Resp) -> Result(String, Resp) {
+pub fn to_string(resp: Resp) -> Result(String, Nil) {
   case resp {
     BulkString(bs) -> Ok(bs)
     SimpleString(ss) -> Ok(ss)
-    _ -> Error(resp)
+    _ -> Error(Nil)
+  }
+}
+
+pub fn to_list(resp: Resp) -> List(Resp) {
+  case resp {
+    SimpleString(_) | BulkString(_) -> [resp]
+    Array(list) -> list
+    Null(_) -> []
   }
 }
