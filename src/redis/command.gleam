@@ -29,16 +29,9 @@ pub type Error {
 
 pub fn parse(resp: Resp) -> Result(Command, Error) {
   case resp {
-    SimpleString(s) | BulkString(s) -> parse_string(s)
+    SimpleString(_) | BulkString(_) -> parse_list([resp])
     Array(list) -> parse_list(list)
     Null(_) -> Error(InvalidCommand)
-  }
-}
-
-fn parse_string(string: String) -> Result(Command, Error) {
-  case string.uppercase(string) {
-    "PING" -> Ok(Ping)
-    _ -> Error(InvalidCommand)
   }
 }
 
@@ -54,6 +47,8 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
   use command <- result.then(command)
   use args <- result.then(args)
   case command, args {
+    "PING", [] -> Ok(Ping)
+    "PING", _ -> Error(WrongNumberOfArguments)
     "ECHO", [payload] -> Ok(Echo(payload))
     "ECHO", _ -> Error(WrongNumberOfArguments)
     "SET", _ -> parse_set(args)
