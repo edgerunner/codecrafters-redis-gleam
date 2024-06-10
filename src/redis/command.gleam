@@ -36,16 +36,7 @@ pub fn parse(resp: Resp) -> Result(Command, Error) {
 }
 
 fn parse_list(list: List(Resp)) -> Result(Command, Error) {
-  let command =
-    list.first(list)
-    |> result.then(resp.to_string)
-    |> result.map(string.uppercase)
-    |> result.replace_error(InvalidCommand)
-  let args =
-    list.rest(list)
-    |> result.replace_error(WrongNumberOfArguments)
-  use command <- result.then(command)
-  use args <- result.then(args)
+  use command, args <- with_command(from: list)
   case command, args {
     "PING", [] -> Ok(Ping)
     "PING", _ -> Error(WrongNumberOfArguments)
@@ -80,17 +71,7 @@ fn parse_set(args: List(Resp)) -> Result(Command, Error) {
 }
 
 fn parse_config(args: List(Resp)) -> Result(Command, Error) {
-  let subcommand =
-    list.first(args)
-    |> result.then(resp.to_string)
-    |> result.map(string.uppercase)
-    |> result.replace_error(InvalidSubcommand)
-  let args =
-    list.rest(args)
-    |> result.replace_error(InvalidSubcommand)
-
-  use subcommand <- result.then(subcommand)
-  use args <- result.then(args)
+  use subcommand, args <- with_command(from: args)
   case subcommand, args {
     "GET", [BulkString(key)] ->
       case key {
@@ -101,4 +82,21 @@ fn parse_config(args: List(Resp)) -> Result(Command, Error) {
     "GET", _ -> Error(InvalidArgument)
     unknown, _ -> Error(UnknownCommand(unknown))
   }
+}
+
+fn with_command(
+  from resp: List(Resp),
+  with fun: fn(String, List(Resp)) -> Result(Command, Error),
+) -> Result(Command, Error) {
+  let command =
+    list.first(resp)
+    |> result.then(resp.to_string)
+    |> result.map(string.uppercase)
+    |> result.replace_error(InvalidCommand)
+
+  let args = list.rest(resp) |> result.replace_error(InvalidCommand)
+
+  use command <- result.then(command)
+  use args <- result.then(args)
+  fun(command, args)
 }
