@@ -3,6 +3,7 @@ import bravo/uset.{type USet}
 import gleam/bytes_builder
 import gleam/erlang
 import gleam/erlang/process
+import gleam/iterator
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
@@ -94,6 +95,21 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
             }
           }
 
+          actor.continue(state)
+        }
+        command.Keys(None) -> {
+          let assert Ok(_) =
+            {
+              use key <- iterator.unfold(from: uset.first(state.table))
+              case key {
+                None -> iterator.Done
+                Some(key) -> iterator.Next(key, uset.next(state.table, key))
+              }
+            }
+            |> iterator.map(resp.BulkString)
+            |> iterator.to_list
+            |> resp.Array
+            |> send_resp(conn)
           actor.continue(state)
         }
         command.Keys(_) -> todo as "KEYS command will be implemented soon"
