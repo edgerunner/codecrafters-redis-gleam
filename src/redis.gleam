@@ -11,6 +11,7 @@ import glisten.{type Connection, type Message, Packet, User}
 import redis/command
 import redis/config.{type Config}
 import redis/resp.{type Resp}
+import simplifile
 
 type Value =
   #(String, Resp, Option(Int))
@@ -132,6 +133,19 @@ const store_name = "redis_on_ets"
 
 fn init(_conn) -> #(State, Option(a)) {
   let assert Ok(table) = uset.new(store_name, 1, bravo.Public)
+  let config = config.load()
+  load_rdb(table, config)
+  #(State(table, config), None)
+}
 
-  #(State(table, config.load()), None)
+import gleam/io
+
+fn load_rdb(table: USet(Value), config: Config) {
+  use dir <- option.then(config.dir)
+  use dbfilename <- option.then(config.dbfilename)
+  let fullpath = dir <> "/" <> dbfilename
+  io.println("Reading RDB file at " <> fullpath)
+  let assert Ok(rdb) = simplifile.read_bits(from: fullpath)
+
+  None
 }
