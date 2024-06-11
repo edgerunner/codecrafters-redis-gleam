@@ -1,23 +1,21 @@
-import carpenter/table.{type Set}
+import bravo
+import bravo/uset.{type USet}
 import gleam/bytes_builder
 import gleam/erlang
 import gleam/erlang/process
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
-import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
 import redis/command
 import redis/config.{type Config}
 import redis/resp.{type Resp}
 
-type Value {
-  Permanent(data: Resp)
-  Temporary(data: Resp, timeout: Int)
-}
+type Value =
+  #(String, Resp, Option(Int))
 
 type State {
-  State(table: Set(String, Value), config: Config)
+  State(table: USet(Value), config: Config)
 }
 
 pub fn main() {
@@ -48,7 +46,7 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
         }
 
         command.Set(key: key, value: value, expiry: None) -> {
-          table.insert(state.table, [#(key, Permanent(value))])
+          uset.insert(state.table, [#(key, value, None)])
           let assert Ok(_) =
             resp.SimpleString("OK")
             |> send_resp(conn)
@@ -57,7 +55,7 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
 
         command.Set(key: key, value: value, expiry: Some(expiry)) -> {
           let deadline = erlang.system_time(erlang.Millisecond) + expiry
-          table.insert(state.table, [#(key, Temporary(value, deadline))])
+          uset.insert(state.table, [#(key, value, Some(deadline))])
           let assert Ok(_) =
             resp.SimpleString("OK")
             |> send_resp(conn)
@@ -67,13 +65,12 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
         command.Get(key) -> {
           let posix = erlang.system_time(erlang.Millisecond)
           let assert Ok(_) =
-            case table.lookup(state.table, key) {
-              [] -> resp.Null(resp.NullString)
-              [#(_, Permanent(value)), ..] -> value
-              [#(_, Temporary(value, deadline)), ..] if deadline > posix ->
-                value
-              [#(key, Temporary(_value, _deadline)), ..] -> {
-                table.delete(state.table, key)
+            case uset.lookup(state.table, key) {
+              None -> resp.Null(resp.NullString)
+              Some(#(_, value, None)) -> value
+              Some(#(_, value, Some(deadline))) if deadline > posix -> value
+              Some(#(key, _, _)) -> {
+                uset.delete_key(state.table, key)
                 resp.Null(resp.NullString)
               }
             }
@@ -118,17 +115,7 @@ fn send_resp(
 const store_name = "redis_on_ets"
 
 fn init(_conn) -> #(State, Option(a)) {
-  let assert Ok(table) = {
-    use <- result.lazy_or(table.ref(store_name))
-
-    table.build(store_name)
-    |> table.privacy(table.Public)
-    |> table.write_concurrency(table.WriteConcurrency)
-    |> table.read_concurrency(True)
-    |> table.decentralized_counters(True)
-    |> table.compression(False)
-    |> table.set
-  }
+  let assert Ok(table) = uset.new(store_name, 1, bravo.Public)
 
   #(State(table, config.load()), None)
 }
