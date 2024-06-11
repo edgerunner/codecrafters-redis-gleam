@@ -12,6 +12,7 @@ pub type Command {
   Set(key: String, value: Resp, expiry: Option(Int))
   Get(key: String)
   Config(ConfigSubcommand)
+  Keys(Option(String))
 }
 
 pub type ConfigSubcommand {
@@ -40,15 +41,24 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
   case command, args {
     "PING", [] -> Ok(Ping)
     "PING", _ -> Error(WrongNumberOfArguments)
+
     "ECHO", [payload] -> Ok(Echo(payload))
     "ECHO", _ -> Error(WrongNumberOfArguments)
+
     "SET", _ -> parse_set(args)
+
     "GET", [key] ->
       resp.to_string(key)
       |> result.replace_error(InvalidArgument)
       |> result.map(Get)
     "GET", _ -> Error(WrongNumberOfArguments)
+
     "CONFIG", _ -> parse_config(args)
+
+    "KEYS", [BulkString("*")] -> Ok(Keys(option.None))
+    "KEYS", [BulkString(_)] -> todo
+    "KEYS", _ -> Error(WrongNumberOfArguments)
+
     unknown, _ -> Error(UnknownCommand(unknown))
   }
 }

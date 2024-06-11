@@ -99,6 +99,7 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
 
           actor.continue(state)
         }
+        command.Keys(_) -> todo as "KEYS command will be implemented soon"
       }
     }
     User(_) -> todo

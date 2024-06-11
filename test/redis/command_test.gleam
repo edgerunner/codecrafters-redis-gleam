@@ -115,3 +115,11 @@ pub fn parse_config_get_dbfilename_test() {
   |> should.be_ok
   |> should.equal(command.Config(command.ConfigGet(config.DbFilename)))
 }
+
+pub fn parse_keys_star_test() {
+  [resp.BulkString("KEYS"), resp.BulkString("*")]
+  |> resp.Array
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.Keys(option.None))
+}
