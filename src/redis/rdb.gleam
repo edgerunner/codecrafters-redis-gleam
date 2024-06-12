@@ -1,4 +1,6 @@
 import gleam/bit_array
+import gleam/int
+import gleam/iterator
 import gleam/option.{type Option}
 import gleam/result
 import gleam/string
@@ -12,6 +14,9 @@ pub type RDB {
   )
 }
 
+type Parsed(a) =
+  Result(#(a, BitArray), String)
+
 pub fn parse(data: BitArray) -> Result(RDB, String) {
   let header = case data {
     <<
@@ -24,7 +29,81 @@ pub fn parse(data: BitArray) -> Result(RDB, String) {
     >> -> Ok(#(string.from_utf_codepoints([v0, v1, v2, v3]), rest))
     _ -> Error("Failed at the header")
   }
-  use #(version, _rest) <- result.then(header)
+  use #(version, data) <- result.then(header)
 
-  Ok(RDB(version, [], []))
+  let metadata_parse_result =
+    {
+      use data <- iterator.unfold(from: data)
+      case data {
+        <<0xFA, data:bits>> ->
+          {
+            use #(key, data) <- result.then(parse_string(data))
+            use #(value, data) <- result.map(parse_string(data))
+            iterator.Next(element: Ok(#(key, value, data)), accumulator: data)
+          }
+          |> result.map_error(with: fn(e) {
+            iterator.Next(element: Error(e), accumulator: <<>>)
+          })
+          |> result.unwrap_both
+
+        _ -> iterator.Done
+      }
+    }
+    |> iterator.try_fold(from: #([], <<>>), with: fn(acc, elem) {
+      let #(list, _) = acc
+      case elem {
+        Ok(#(key, value, data)) -> Ok(#([#(key, value), ..list], data))
+        Error(e) -> Error(e)
+      }
+    })
+
+  use #(metadata, _data) <- result.then(metadata_parse_result)
+
+  Ok(RDB(version, metadata, []))
+}
+
+fn parse_string(data: BitArray) -> Parsed(String) {
+  use #(size, data) <- result.then(parse_size(data))
+  case size {
+    Length(l) -> {
+      case data {
+        <<string_bytes:bytes-size(l), rest:bits>> ->
+          bit_array.to_string(string_bytes)
+          |> result.map(fn(string) { #(string, rest) })
+          |> result.replace_error(
+            "Invalid UTF-8 for length " <> int.to_string(l),
+          )
+        _ -> Error("Not enough data for the parsed size " <> int.to_string(l))
+      }
+    }
+
+    Integer(bits) -> {
+      case data {
+        <<integer:size(bits)-unsigned-little, rest:bits>> ->
+          #(int.to_string(integer), rest) |> Ok
+
+        _ -> Error("Failed to parse integer")
+      }
+    }
+  }
+}
+
+type Size {
+  Length(Int)
+  Integer(Int)
+}
+
+fn parse_size(data: BitArray) -> Parsed(Size) {
+  case data {
+    <<0b00:2, size:unsigned-6, rest:bits>> -> Ok(#(Length(size), rest))
+    <<0b01:2, size:unsigned-big-14, rest:bits>> -> Ok(#(Length(size), rest))
+    <<0b10:2, _ignore:6, size:unsigned-big-32, rest:bits>> ->
+      Ok(#(Length(size), rest))
+    <<0xC0, rest:bits>> -> Ok(#(Integer(8), rest))
+    <<0xC1, rest:bits>> -> Ok(#(Integer(16), rest))
+    <<0xC2, rest:bits>> -> Ok(#(Integer(32), rest))
+    <<0xC3, _rest:bits>> -> Error("LZF compression isn't supported")
+
+    _ -> Error("Invalid RDB size")
+  }
 }
