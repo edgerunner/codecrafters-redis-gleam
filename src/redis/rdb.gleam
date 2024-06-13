@@ -1,4 +1,5 @@
 import gleam/bit_array
+import gleam/dict.{type Dict}
 import gleam/int
 import gleam/iterator
 import gleam/option.{type Option}
@@ -9,7 +10,7 @@ import redis/resp.{type Resp}
 pub type RDB {
   RDB(
     version: String,
-    metadata: List(#(String, String)),
+    metadata: Dict(String, String),
     database: List(#(String, Resp, Option(Int))),
   )
 }
@@ -49,12 +50,10 @@ pub fn parse(data: BitArray) -> Result(RDB, String) {
         _ -> iterator.Done
       }
     }
-    |> iterator.try_fold(from: #([], <<>>), with: fn(acc, elem) {
-      let #(list, _) = acc
-      case elem {
-        Ok(#(key, value, data)) -> Ok(#([#(key, value), ..list], data))
-        Error(e) -> Error(e)
-      }
+    |> iterator.try_fold(from: #(dict.new(), <<>>), with: fn(acc, elem) {
+      let #(dict, _) = acc
+      use #(key, value, data) <- result.map(over: elem)
+      #(dict.insert(insert: value, into: dict, for: key), data)
     })
 
   use #(metadata, _data) <- result.then(metadata_parse_result)
