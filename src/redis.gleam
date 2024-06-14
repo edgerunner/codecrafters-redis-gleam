@@ -1,15 +1,19 @@
 import bravo
 import bravo/uset.{type USet}
 import gleam/bytes_builder
+import gleam/dict
 import gleam/erlang
 import gleam/erlang/process
+import gleam/io
 import gleam/iterator
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
+import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
 import redis/command
 import redis/config.{type Config}
+import redis/rdb
 import redis/resp.{type Resp}
 import simplifile
 
@@ -138,20 +142,19 @@ fn init(_conn) -> #(State, Option(a)) {
   #(State(table, config), None)
 }
 
-import gleam/io
-import gleam/result
-import redis/rdb
-
-fn load_rdb(_table: USet(Value), config: Config) {
+fn load_rdb(table: USet(Value), config: Config) {
   use dir <- option.then(config.dir)
   use dbfilename <- option.then(config.dbfilename)
   let fullpath = dir <> "/" <> dbfilename
   io.println("Reading RDB file at " <> fullpath)
-  let assert Ok(_rdb) =
+  let assert Ok(db) =
     simplifile.read_bits(from: fullpath)
     |> result.replace_error("")
     |> result.then(rdb.parse)
-    |> io.debug
+    |> result.then(fn(rdb) {
+      dict.get(rdb.databases, 0) |> result.replace_error("database 0 not found")
+    })
 
+  let assert True = uset.insert(table, dict.values(db))
   None
 }
