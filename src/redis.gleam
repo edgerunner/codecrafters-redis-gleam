@@ -77,10 +77,10 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
           let posix = erlang.system_time(erlang.Millisecond)
           let assert Ok(_) =
             case uset.lookup(table, key) {
-              None -> resp.Null(resp.NullString)
-              Some(#(_, value, None)) -> value
-              Some(#(_, value, Some(deadline))) if deadline > posix -> value
-              Some(#(key, _, _)) -> {
+              Error(Nil) -> resp.Null(resp.NullString)
+              Ok(#(_, value, None)) -> value
+              Ok(#(_, value, Some(deadline))) if deadline > posix -> value
+              Ok(#(key, _, _)) -> {
                 uset.delete_key(table, key)
                 resp.Null(resp.NullString)
               }
@@ -111,9 +111,10 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
           let assert Ok(_) =
             {
               use key <- iterator.unfold(from: uset.first(table))
+
               case key {
-                None -> iterator.Done
-                Some(key) -> iterator.Next(key, uset.next(table, key))
+                Error(Nil) -> iterator.Done
+                Ok(key) -> iterator.Next(key, uset.next(table, key))
               }
             }
             |> iterator.map(resp.BulkString)
