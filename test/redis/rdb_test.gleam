@@ -48,3 +48,21 @@ pub fn parse_metadata_test() {
   |> should.be_ok
   |> should.equal("1718121924")
 }
+
+import gleam/io
+
+pub fn parse_key_string_value_in_db_test() {
+  let rdb =
+    rdb.parse(rdb_file)
+    |> io.debug
+    |> should.be_ok
+  let db =
+    dict.get(rdb.databases, 0)
+    |> should.be_ok
+  dict.get(db, "haskell")
+  |> should.be_ok
+  |> should.equal(#("haskell", resp.BulkString("curry"), option.None))
+  dict.get(db, "foo")
+  |> should.be_ok
+  |> should.equal(#("foo", resp.BulkString("bar"), option.None))
+}

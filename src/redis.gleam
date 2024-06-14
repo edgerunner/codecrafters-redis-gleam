@@ -142,12 +142,12 @@ import gleam/io
 import gleam/result
 import redis/rdb
 
-fn load_rdb(table: USet(Value), config: Config) {
+fn load_rdb(_table: USet(Value), config: Config) {
   use dir <- option.then(config.dir)
   use dbfilename <- option.then(config.dbfilename)
   let fullpath = dir <> "/" <> dbfilename
   io.println("Reading RDB file at " <> fullpath)
-  let assert Ok(rdb) =
+  let assert Ok(_rdb) =
     simplifile.read_bits(from: fullpath)
     |> result.replace_error("")
     |> result.then(rdb.parse)
