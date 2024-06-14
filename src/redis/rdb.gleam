@@ -29,18 +29,7 @@ type Parsed(a) =
   Result(#(a, BitArray), String)
 
 pub fn parse(data: BitArray) -> Result(RDB, String) {
-  let header = case data {
-    <<
-      "REDIS":utf8,
-      v0:utf8_codepoint,
-      v1:utf8_codepoint,
-      v2:utf8_codepoint,
-      v3:utf8_codepoint,
-      rest:bits,
-    >> -> Ok(#(string.from_utf_codepoints([v0, v1, v2, v3]), rest))
-    _ -> Error("Failed at the header")
-  }
-  use #(version, data) <- result.then(header)
+  use #(version, data) <- result.then(parse_header(data))
 
   let metadata_parse_result =
     collect(from: data, with: parse_metadata)
@@ -109,6 +98,20 @@ fn parse_symbol(from data: BitArray, match symbol: BitArray) -> Parsed(Nil) {
     <<match:bits-size(bit_size), rest:bits>> if match == symbol ->
       Ok(#(Nil, rest))
     _ -> Error("Symbol " <> bit_array.inspect(symbol) <> "not found")
+  }
+}
+
+fn parse_header(from data: BitArray) -> Parsed(String) {
+  case data {
+    <<
+      "REDIS":utf8,
+      v0:utf8_codepoint,
+      v1:utf8_codepoint,
+      v2:utf8_codepoint,
+      v3:utf8_codepoint,
+      rest:bits,
+    >> -> Ok(#(string.from_utf_codepoints([v0, v1, v2, v3]), rest))
+    _ -> Error("Failed at the header")
   }
 }
 
