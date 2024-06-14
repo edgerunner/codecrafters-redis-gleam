@@ -74,17 +74,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
         }
 
         command.Get(key) -> {
-          let posix = erlang.system_time(erlang.Millisecond)
           let assert Ok(_) =
-            case uset.lookup(table, key) {
-              Error(Nil) -> resp.Null(resp.NullString)
-              Ok(#(_, value, None)) -> value
-              Ok(#(_, value, Some(deadline))) if deadline > posix -> value
-              Ok(#(key, _, _)) -> {
-                uset.delete_key(table, key)
-                resp.Null(resp.NullString)
-              }
-            }
+            lookup(table, key)
             |> send_resp(conn)
 
           actor.continue(Nil)
@@ -125,7 +116,17 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
         }
         command.Keys(_) -> todo as "KEYS command will be implemented soon"
 
-        command.Type(key) -> todo
+        command.Type(key) -> {
+          let assert Ok(_) =
+            case lookup(table, key) {
+              resp.BulkString(_) -> "string"
+              resp.Null(_) -> "none"
+              _ -> ""
+            }
+            |> resp.SimpleString
+            |> send_resp(conn)
+          actor.continue(Nil)
+        }
       }
     }
     User(_) -> todo
@@ -139,6 +140,19 @@ fn send_resp(
   resp.encode(resp)
   |> bytes_builder.from_bit_array
   |> glisten.send(conn, _)
+}
+
+fn lookup(table: Table, key: String) -> Resp {
+  let posix = erlang.system_time(erlang.Millisecond)
+  case uset.lookup(table, key) {
+    Error(Nil) -> resp.Null(resp.NullString)
+    Ok(#(_, value, None)) -> value
+    Ok(#(_, value, Some(deadline))) if deadline > posix -> value
+    Ok(#(key, _, _)) -> {
+      uset.delete_key(table, key)
+      resp.Null(resp.NullString)
+    }
+  }
 }
 
 const store_name = "redis_on_ets"
