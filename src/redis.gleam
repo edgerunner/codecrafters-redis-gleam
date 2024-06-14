@@ -20,19 +20,24 @@ import simplifile
 type Value =
   #(String, Resp, Option(Int))
 
-type State {
-  State(table: USet(Value), config: Config)
-}
+type Table =
+  USet(Value)
 
 pub fn main() {
+  let config = config.load()
+  let assert Ok(table) = uset.new(store_name, 1, bravo.Public)
+  load_rdb(table, config)
+
   let assert Ok(_) =
-    glisten.handler(init, router)
+    glisten.handler(fn(_) { #(Nil, None) }, fn(msg, _state, conn) {
+      router(msg, table, config, conn)
+    })
     |> glisten.serve(6379)
 
   process.sleep_forever()
 }
 
-fn router(msg: Message(a), state: State, conn: Connection(a)) {
+fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
   case msg {
     Packet(resp_binary) -> {
       let assert Ok(#(resp, _)) = resp_binary |> resp.parse
@@ -44,52 +49,52 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
             resp.SimpleString("PONG")
             |> send_resp(conn)
 
-          actor.continue(state)
+          actor.continue(Nil)
         }
         command.Echo(payload) -> {
           let assert Ok(_) = send_resp(payload, conn)
-          actor.continue(state)
+          actor.continue(Nil)
         }
 
         command.Set(key: key, value: value, expiry: None) -> {
-          uset.insert(state.table, [#(key, value, None)])
+          uset.insert(table, [#(key, value, None)])
           let assert Ok(_) =
             resp.SimpleString("OK")
             |> send_resp(conn)
-          actor.continue(state)
+          actor.continue(Nil)
         }
 
         command.Set(key: key, value: value, expiry: Some(expiry)) -> {
           let deadline = erlang.system_time(erlang.Millisecond) + expiry
-          uset.insert(state.table, [#(key, value, Some(deadline))])
+          uset.insert(table, [#(key, value, Some(deadline))])
           let assert Ok(_) =
             resp.SimpleString("OK")
             |> send_resp(conn)
-          actor.continue(state)
+          actor.continue(Nil)
         }
 
         command.Get(key) -> {
           let posix = erlang.system_time(erlang.Millisecond)
           let assert Ok(_) =
-            case uset.lookup(state.table, key) {
+            case uset.lookup(table, key) {
               None -> resp.Null(resp.NullString)
               Some(#(_, value, None)) -> value
               Some(#(_, value, Some(deadline))) if deadline > posix -> value
               Some(#(key, _, _)) -> {
-                uset.delete_key(state.table, key)
+                uset.delete_key(table, key)
                 resp.Null(resp.NullString)
               }
             }
             |> send_resp(conn)
 
-          actor.continue(state)
+          actor.continue(Nil)
         }
         command.Config(subcommand) -> {
           let assert Ok(_) = case subcommand {
             command.ConfigGet(parameter) -> {
               case parameter {
-                config.Dir -> state.config.dir
-                config.DbFilename -> state.config.dbfilename
+                config.Dir -> config.dir
+                config.DbFilename -> config.dbfilename
               }
               |> option.map(resp.BulkString)
               |> option.unwrap(resp.Null(resp.NullString))
@@ -100,22 +105,22 @@ fn router(msg: Message(a), state: State, conn: Connection(a)) {
             }
           }
 
-          actor.continue(state)
+          actor.continue(Nil)
         }
         command.Keys(None) -> {
           let assert Ok(_) =
             {
-              use key <- iterator.unfold(from: uset.first(state.table))
+              use key <- iterator.unfold(from: uset.first(table))
               case key {
                 None -> iterator.Done
-                Some(key) -> iterator.Next(key, uset.next(state.table, key))
+                Some(key) -> iterator.Next(key, uset.next(table, key))
               }
             }
             |> iterator.map(resp.BulkString)
             |> iterator.to_list
             |> resp.Array
             |> send_resp(conn)
-          actor.continue(state)
+          actor.continue(Nil)
         }
         command.Keys(_) -> todo as "KEYS command will be implemented soon"
       }
@@ -135,26 +140,21 @@ fn send_resp(
 
 const store_name = "redis_on_ets"
 
-fn init(_conn) -> #(State, Option(a)) {
-  let assert Ok(table) = uset.new(store_name, 1, bravo.Public)
-  let config = config.load()
-  load_rdb(table, config)
-  #(State(table, config), None)
-}
-
 fn load_rdb(table: USet(Value), config: Config) {
   use dir <- option.then(config.dir)
   use dbfilename <- option.then(config.dbfilename)
   let fullpath = dir <> "/" <> dbfilename
   io.println("Reading RDB file at " <> fullpath)
-  let assert Ok(db) =
-    simplifile.read_bits(from: fullpath)
-    |> result.replace_error("")
-    |> result.then(rdb.parse)
-    |> result.then(fn(rdb) {
-      dict.get(rdb.databases, 0) |> result.replace_error("database 0 not found")
-    })
 
-  let assert True = uset.insert(table, dict.values(db))
+  simplifile.read_bits(from: fullpath)
+  |> result.replace_error("Could not read RDB file")
+  |> result.then(rdb.parse)
+  |> result.then(fn(rdb) {
+    dict.get(rdb.databases, 0) |> result.replace_error("database 0 not found")
+  })
+  |> result.map(dict.values)
+  |> result.map(uset.insert(table, _))
+  |> result.unwrap(or: False)
+
   None
 }
