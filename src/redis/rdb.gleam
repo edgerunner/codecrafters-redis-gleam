@@ -43,28 +43,8 @@ pub fn parse(data: BitArray) -> Result(RDB, String) {
   use #(version, data) <- result.then(header)
 
   let metadata_parse_result =
-    {
-      use data <- iterator.unfold(from: data)
-      case data {
-        <<0xFA, data:bits>> ->
-          {
-            use #(key, data) <- result.then(parse_string(data))
-            use #(value, data) <- result.map(parse_string(data))
-            iterator.Next(element: Ok(#(key, value, data)), accumulator: data)
-          }
-          |> result.map_error(with: fn(e) {
-            iterator.Next(element: Error(e), accumulator: <<>>)
-          })
-          |> result.unwrap_both
-
-        _ -> iterator.Done
-      }
-    }
-    |> iterator.try_fold(from: #(dict.new(), <<>>), with: fn(acc, elem) {
-      let #(dict, _) = acc
-      use #(key, value, data) <- result.map(over: elem)
-      #(dict.insert(insert: value, into: dict, for: key), data)
-    })
+    collect(from: data, with: parse_metadata)
+    |> into_dict
 
   use #(metadata, data) <- result.then(metadata_parse_result)
 
@@ -130,6 +110,13 @@ fn parse_symbol(from data: BitArray, match symbol: BitArray) -> Parsed(Nil) {
       Ok(#(Nil, rest))
     _ -> Error("Symbol " <> bit_array.inspect(symbol) <> "not found")
   }
+}
+
+fn parse_metadata(from data: BitArray) -> Parsed(#(String, String)) {
+  use #(Nil, data) <- result.then(parse_symbol(from: data, match: <<0xFA>>))
+  use #(key, data) <- result.then(parse_string(data))
+  use #(value, data) <- result.then(parse_string(data))
+  Ok(#(#(key, value), data))
 }
 
 fn discard_resizedb(from data: BitArray) -> Parsed(Nil) {
