@@ -170,13 +170,24 @@ fn parse_database(from data: BitArray) -> Parsed(Database) {
 }
 
 fn parse_row(from data: BitArray) -> Parsed(Row) {
+  use #(expiry, data) <- result.then(parse_expiry(data))
   use #(datatype, data) <- result.then(parse_value_type(data))
   use #(key, data) <- result.then(parse_string(data))
   case datatype {
     StringValue -> {
       use #(value, data) <- result.then(parse_string(data))
-      Ok(#(#(key, resp.BulkString(value), option.None), data))
+      Ok(#(#(key, resp.BulkString(value), expiry), data))
     }
+  }
+}
+
+fn parse_expiry(from data: BitArray) -> Parsed(Option(Int)) {
+  case data {
+    <<0xfd, posix_s:size(32)-little-unsigned, rest:bits>> ->
+      Ok(#(option.Some(posix_s * 1000), rest))
+    <<0xfc, posix_ms:size(64)-little-unsigned, rest:bits>> ->
+      Ok(#(option.Some(posix_ms), rest))
+    _ -> Ok(#(option.None, data))
   }
 }
 

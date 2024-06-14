@@ -23,8 +23,16 @@ const rdb_file = <<
   0x00, 0x07, "haskell":utf8, 0x05, "curry":utf8,
   // string: foo => bar
   0x00, 0x03, "foo":utf8, 0x03, "bar":utf8,
-  // EOF, checksum
-  0xff, 0xa1f1_f3df_3053_8d0f:big,
+  // expire timestamp seconds
+  0xfd, 1_718_377_200:size(32)-little,
+  // string past => tense
+  0x00, 0x04, "past":utf8, 0x05, "tense":utf8,
+  // expire timestamp miliseconds
+  0xfc, 2_033_910_084_000:size(64)-little,
+  // string future => perfect
+  0x00, 0x06, "future":utf8, 0x07, "perfect":utf8,
+  // EOF, no checksum
+  0xff, 0x0000000000000000:big,
 >>
 
 pub fn parse_header_test() {
@@ -49,12 +57,9 @@ pub fn parse_metadata_test() {
   |> should.equal("1718121924")
 }
 
-import gleam/io
-
 pub fn parse_key_string_value_in_db_test() {
   let rdb =
     rdb.parse(rdb_file)
-    |> io.debug
     |> should.be_ok
   let db =
     dict.get(rdb.databases, 0)
@@ -65,4 +70,27 @@ pub fn parse_key_string_value_in_db_test() {
   dict.get(db, "foo")
   |> should.be_ok
   |> should.equal(#("foo", resp.BulkString("bar"), option.None))
+}
+
+pub fn parse_expiring_key_string_value_in_db_test() {
+  let rdb =
+    rdb.parse(rdb_file)
+    |> should.be_ok
+  let db =
+    dict.get(rdb.databases, 0)
+    |> should.be_ok
+  dict.get(db, "past")
+  |> should.be_ok
+  |> should.equal(#(
+    "past",
+    resp.BulkString("tense"),
+    option.Some(1_718_377_200_000),
+  ))
+  dict.get(db, "future")
+  |> should.be_ok
+  |> should.equal(#(
+    "future",
+    resp.BulkString("perfect"),
+    option.Some(2_033_910_084_000),
+  ))
 }
