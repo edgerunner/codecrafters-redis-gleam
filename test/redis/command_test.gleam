@@ -131,3 +131,22 @@ pub fn parse_type_test() {
   |> should.be_ok
   |> should.equal(command.Type("flagon"))
 }
+
+import gleam/list
+import gleam/string
+
+pub fn parse_xadd_test() {
+  "XADD fruits 12345678-0 mango 5 kiwi 48 apple 12"
+  |> string.split(on: " ")
+  |> list.map(resp.BulkString)
+  |> resp.Array
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(
+    command.XAdd(stream: "fruits", entry: "12345678-0", data: [
+      #("mango", resp.BulkString("5")),
+      #("kiwi", resp.BulkString("48")),
+      #("apple", resp.BulkString("12")),
+    ]),
+  )
+}

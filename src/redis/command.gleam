@@ -14,6 +14,7 @@ pub type Command {
   Config(ConfigSubcommand)
   Keys(Option(String))
   Type(String)
+  XAdd(stream: String, entry: String, data: List(#(String, Resp)))
 }
 
 pub type ConfigSubcommand {
@@ -65,6 +66,28 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
       |> result.replace_error(InvalidArgument)
       |> result.map(Type)
     "TYPE", _ -> Error(WrongNumberOfArguments)
+
+    "XADD", [stream, entry, ..data] -> {
+      let as_string = fn(resp: Resp, callback: fn(String) -> Result(a, Error)) {
+        resp.to_string(resp)
+        |> result.replace_error(InvalidArgument)
+        |> result.then(callback)
+      }
+      use stream <- as_string(stream)
+      use entry <- as_string(entry)
+
+      let data =
+        list.sized_chunk(in: data, into: 2)
+        |> list.try_map(fn(kv2) {
+          let assert [key, val] = kv2
+          use key <- as_string(key)
+          Ok(#(key, val))
+        })
+
+      use data <- result.then(data)
+
+      Ok(XAdd(stream, entry, data))
+    }
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }

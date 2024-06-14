@@ -127,6 +127,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             |> send_resp(conn)
           actor.continue(Nil)
         }
+
+        command.XAdd(_, _, _) -> todo
       }
     }
     User(_) -> todo
