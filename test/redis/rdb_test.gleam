@@ -31,8 +31,8 @@ const rdb_file = <<
   0xfc, 2_033_910_084_000:size(64)-little,
   // string future => perfect
   0x00, 0x06, "future":utf8, 0x07, "perfect":utf8,
-  // EOF, no checksum
-  0xff, 0x0000000000000000:big,
+  // EOF, no checksum, LF
+  0xff, 0x0000000000000000:big-size(64), 0x0a,
 >>
 
 pub fn parse_header_test() {

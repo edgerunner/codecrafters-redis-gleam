@@ -41,7 +41,9 @@ pub fn parse(data: BitArray) -> Result(RDB, String) {
     collect(from: data, with: parse_database_with_id)
     |> into_dict
 
-  use #(databases, _data) <- result.then(databases_parse_result)
+  use #(databases, data) <- result.then(databases_parse_result)
+
+  use _ <- result.then(parse_eof(data))
 
   Ok(RDB(version, metadata, databases))
 }
@@ -185,6 +187,14 @@ fn parse_value_type(from data: BitArray) -> Parsed(ValueType) {
   case data {
     <<0x00, rest:bits>> -> Ok(#(StringValue, rest))
     _ -> Error("Only string values are supported for now")
+  }
+}
+
+fn parse_eof(from data: BitArray) -> Parsed(Nil) {
+  case data {
+    <<>> | <<0xFF, _checksum:size(64)>> | <<0xFF, _checksum:size(64), 0x0A>> ->
+      Ok(#(Nil, <<>>))
+    _ -> Error("Expecting end of file optionally with a 8-byte checksum")
   }
 }
 
