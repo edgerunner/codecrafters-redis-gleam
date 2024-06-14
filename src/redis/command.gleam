@@ -13,6 +13,7 @@ pub type Command {
   Get(key: String)
   Config(ConfigSubcommand)
   Keys(Option(String))
+  Type(String)
 }
 
 pub type ConfigSubcommand {
@@ -58,6 +59,12 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     "KEYS", [BulkString("*")] -> Ok(Keys(option.None))
     "KEYS", [BulkString(_)] -> todo
     "KEYS", _ -> Error(WrongNumberOfArguments)
+
+    "TYPE", [key] ->
+      resp.to_string(key)
+      |> result.replace_error(InvalidArgument)
+      |> result.map(Type)
+    "TYPE", _ -> Error(WrongNumberOfArguments)
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }

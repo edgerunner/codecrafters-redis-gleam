@@ -124,6 +124,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
           actor.continue(Nil)
         }
         command.Keys(_) -> todo as "KEYS command will be implemented soon"
+
+        command.Type(key) -> todo
       }
     }
     User(_) -> todo

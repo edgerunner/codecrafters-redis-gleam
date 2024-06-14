@@ -123,3 +123,11 @@ pub fn parse_keys_star_test() {
   |> should.be_ok
   |> should.equal(command.Keys(option.None))
 }
+
+pub fn parse_type_test() {
+  [resp.BulkString("TYPE"), resp.BulkString("flagon")]
+  |> resp.Array
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.Type("flagon"))
+}
