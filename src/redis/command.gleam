@@ -9,12 +9,12 @@ import redis/resp.{type Resp, Array, BulkString, Null, SimpleString}
 pub type Command {
   Ping
   Echo(Resp)
-  Set(key: String, value: Resp, expiry: Option(Int))
+  Set(key: String, value: String, expiry: Option(Int))
   Get(key: String)
   Config(ConfigSubcommand)
   Keys(Option(String))
   Type(String)
-  XAdd(stream: String, entry: String, data: List(#(String, Resp)))
+  XAdd(stream: String, entry: String, data: List(#(String, String)))
 }
 
 pub type ConfigSubcommand {
@@ -81,6 +81,7 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
         |> list.try_map(fn(kv2) {
           let assert [key, val] = kv2
           use key <- as_string(key)
+          use val <- as_string(val)
           Ok(#(key, val))
         })
 
@@ -95,9 +96,14 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
 
 fn parse_set(args: List(Resp)) -> Result(Command, Error) {
   case args {
-    [BulkString(key), value] ->
+    [BulkString(key), BulkString(value)] ->
       Ok(Set(key: key, value: value, expiry: option.None))
-    [BulkString(key), value, BulkString(expiry), BulkString(duration)] ->
+    [
+      BulkString(key),
+      BulkString(value),
+      BulkString(expiry),
+      BulkString(duration),
+    ] ->
       case string.uppercase(expiry), int.parse(duration) {
         "PX", Ok(duration) -> Ok(duration)
         "EX", Ok(duration) -> Ok(duration * 1000)

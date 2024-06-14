@@ -31,11 +31,7 @@ pub fn parse_set_key_value_test() {
   |> resp.Array
   |> command.parse
   |> should.be_ok
-  |> should.equal(command.Set(
-    key: "key",
-    value: resp.BulkString("value"),
-    expiry: option.None,
-  ))
+  |> should.equal(command.Set(key: "key", value: "value", expiry: option.None))
 }
 
 pub fn parse_set_key_value_with_expiry_test() {
@@ -51,7 +47,7 @@ pub fn parse_set_key_value_with_expiry_test() {
   |> should.be_ok
   |> should.equal(command.Set(
     key: "key",
-    value: resp.BulkString("value"),
+    value: "value",
     expiry: option.Some(15_000),
   ))
 }
@@ -69,7 +65,7 @@ pub fn parse_set_key_value_with_precise_expiry_test() {
   |> should.be_ok
   |> should.equal(command.Set(
     key: "key",
-    value: resp.BulkString("value"),
+    value: "value",
     expiry: option.Some(125),
   ))
 }
@@ -144,9 +140,9 @@ pub fn parse_xadd_test() {
   |> should.be_ok
   |> should.equal(
     command.XAdd(stream: "fruits", entry: "12345678-0", data: [
-      #("mango", resp.BulkString("5")),
-      #("kiwi", resp.BulkString("48")),
-      #("apple", resp.BulkString("12")),
+      #("mango", "5"),
+      #("kiwi", "48"),
+      #("apple", "12"),
     ]),
   )
 }

@@ -15,13 +15,14 @@ import redis/command
 import redis/config.{type Config}
 import redis/rdb
 import redis/resp.{type Resp}
+import redis/value.{type RedisValue}
 import simplifile
 
-type Value =
-  #(String, Resp, Option(Int))
+type Row =
+  #(String, RedisValue, Option(Int))
 
 type Table =
-  USet(Value)
+  USet(Row)
 
 pub fn main() {
   let config = config.load()
@@ -57,7 +58,7 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
         }
 
         command.Set(key: key, value: value, expiry: None) -> {
-          uset.insert(table, [#(key, value, None)])
+          uset.insert(table, [#(key, value.String(value), None)])
           let assert Ok(_) =
             resp.SimpleString("OK")
             |> send_resp(conn)
@@ -66,7 +67,7 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
 
         command.Set(key: key, value: value, expiry: Some(expiry)) -> {
           let deadline = erlang.system_time(erlang.Millisecond) + expiry
-          uset.insert(table, [#(key, value, Some(deadline))])
+          uset.insert(table, [#(key, value.String(value), Some(deadline))])
           let assert Ok(_) =
             resp.SimpleString("OK")
             |> send_resp(conn)
@@ -75,7 +76,11 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
 
         command.Get(key) -> {
           let assert Ok(_) =
-            lookup(table, key)
+            case lookup(table, key) {
+              value.None -> resp.Null(resp.NullString)
+              value.String(s) -> resp.BulkString(s)
+              _ -> todo as "can only get strings or nothing for now"
+            }
             |> send_resp(conn)
 
           actor.continue(Nil)
@@ -118,20 +123,34 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
 
         command.Type(key) -> {
           let assert Ok(_) =
-            case lookup(table, key) {
-              resp.BulkString(_) -> "string"
-              resp.Null(_) -> "none"
-              _ -> ""
-            }
+            lookup(table, key)
+            |> value.to_type_name
             |> resp.SimpleString
             |> send_resp(conn)
           actor.continue(Nil)
         }
 
-        command.XAdd(_, _, _) -> todo
+        command.XAdd(stream, entry, data) -> {
+          let assert Ok(_) =
+            case lookup(table, stream) {
+              value.None -> {
+                [#(stream, value.Stream([#(entry, data)]), None)]
+                |> uset.insert(table, _)
+                resp.SimpleString(entry)
+              }
+              value.Stream(entries) -> {
+                [#(stream, value.Stream([#(entry, data), ..entries]), None)]
+                |> uset.insert(table, _)
+                resp.SimpleString(entry)
+              }
+              _ -> resp.Null(resp.NullString)
+            }
+            |> send_resp(conn)
+          actor.continue(Nil)
+        }
       }
     }
-    User(_) -> todo
+    User(_) -> actor.continue(Nil)
   }
 }
 
@@ -144,22 +163,22 @@ fn send_resp(
   |> glisten.send(conn, _)
 }
 
-fn lookup(table: Table, key: String) -> Resp {
+fn lookup(table: Table, key: String) -> RedisValue {
   let posix = erlang.system_time(erlang.Millisecond)
   case uset.lookup(table, key) {
-    Error(Nil) -> resp.Null(resp.NullString)
+    Error(Nil) -> value.None
     Ok(#(_, value, None)) -> value
     Ok(#(_, value, Some(deadline))) if deadline > posix -> value
     Ok(#(key, _, _)) -> {
       uset.delete_key(table, key)
-      resp.Null(resp.NullString)
+      value.None
     }
   }
 }
 
 const store_name = "redis_on_ets"
 
-fn load_rdb(table: USet(Value), config: Config) {
+fn load_rdb(table: USet(Row), config: Config) {
   use dir <- option.then(config.dir)
   use dbfilename <- option.then(config.dbfilename)
   let fullpath = dir <> "/" <> dbfilename

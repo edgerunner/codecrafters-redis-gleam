@@ -2,7 +2,7 @@ import gleam/dict
 import gleam/option
 import gleeunit/should
 import redis/rdb
-import redis/resp
+import redis/value
 
 const rdb_file = <<
   // header, version
@@ -66,10 +66,10 @@ pub fn parse_key_string_value_in_db_test() {
     |> should.be_ok
   dict.get(db, "haskell")
   |> should.be_ok
-  |> should.equal(#("haskell", resp.BulkString("curry"), option.None))
+  |> should.equal(#("haskell", value.String("curry"), option.None))
   dict.get(db, "foo")
   |> should.be_ok
-  |> should.equal(#("foo", resp.BulkString("bar"), option.None))
+  |> should.equal(#("foo", value.String("bar"), option.None))
 }
 
 pub fn parse_expiring_key_string_value_in_db_test() {
@@ -83,14 +83,14 @@ pub fn parse_expiring_key_string_value_in_db_test() {
   |> should.be_ok
   |> should.equal(#(
     "past",
-    resp.BulkString("tense"),
+    value.String("tense"),
     option.Some(1_718_377_200_000),
   ))
   dict.get(db, "future")
   |> should.be_ok
   |> should.equal(#(
     "future",
-    resp.BulkString("perfect"),
+    value.String("perfect"),
     option.Some(2_033_910_084_000),
   ))
 }

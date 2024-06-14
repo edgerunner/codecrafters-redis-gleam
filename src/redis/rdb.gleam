@@ -5,7 +5,7 @@ import gleam/iterator.{type Iterator}
 import gleam/option.{type Option}
 import gleam/result
 import gleam/string
-import redis/resp.{type Resp}
+import redis/value.{type RedisValue}
 
 pub type RDB {
   RDB(
@@ -23,7 +23,7 @@ type Database =
   Dict(String, Row)
 
 type Row =
-  #(String, Resp, Option(Int))
+  #(String, RedisValue, Option(Int))
 
 type Parsed(a) =
   Result(#(a, BitArray), String)
@@ -168,7 +168,7 @@ fn parse_row(from data: BitArray) -> Parsed(Row) {
   case datatype {
     StringValue -> {
       use #(value, data) <- result.then(parse_string(data))
-      Ok(#(#(key, resp.BulkString(value), expiry), data))
+      Ok(#(#(key, value.String(value), expiry), data))
     }
   }
 }
