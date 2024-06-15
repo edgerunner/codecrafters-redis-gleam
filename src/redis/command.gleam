@@ -1,7 +1,6 @@
 import gleam/int
 import gleam/list
 import gleam/option.{type Option}
-import gleam/pair
 import gleam/result
 import gleam/string
 import redis/config
