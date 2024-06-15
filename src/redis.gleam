@@ -204,13 +204,17 @@ fn handle_xadd(
     }
     // New stream, auto sequence
     value.None, command.AutoSequence(timestamp) -> {
+      let sequence = case timestamp {
+        0 -> 1
+        _ -> 0
+      }
       use <- validate_entry_id(
         timestamp: timestamp,
-        sequence: 0,
+        sequence: sequence,
         last_ts: 0,
         last_seq: 0,
       )
-      Ok([#(timestamp, 0, data)])
+      Ok([#(timestamp, sequence, data)])
     }
     // New stream, explicit id
     value.None, command.Explicit(timestamp, sequence) -> {
