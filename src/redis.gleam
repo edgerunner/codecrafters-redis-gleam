@@ -10,6 +10,7 @@ import gleam/io
 import gleam/iterator
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/order.{Eq, Gt, Lt}
 import gleam/otp/actor
 import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
@@ -133,53 +134,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
         }
 
         command.XAdd(stream, entry_id, data) -> {
-          let #(timestamp, sequence) = case entry_id {
-            command.AutoGenerate -> #(erlang.system_time(erlang.Millisecond), 0)
-            command.AutoSequence(timestamp) -> #(timestamp, 0)
-            command.Explicit(timestamp, sequence) -> #(timestamp, sequence)
-          }
-          let validate = fn(last_ts, last_seq, callback) {
-            use <- bool.guard(
-              when: timestamp < 0 || { timestamp == 0 && sequence < 1 },
-              return: resp.SimpleError(
-                "ERR The ID specified in XADD must be greater than 0-0",
-              ),
-            )
-            bool.guard(
-              when: timestamp < last_ts
-                || { timestamp == last_ts && sequence <= last_seq },
-              return: resp.SimpleError(
-                "ERR The ID specified in XADD is equal or smaller than the target stream top item",
-              ),
-              otherwise: callback,
-            )
-          }
           let assert Ok(_) =
-            case lookup(table, stream) {
-              value.None -> {
-                use <- validate(0, 0)
-                [#(stream, value.Stream([#(timestamp, sequence, data)]), None)]
-                |> uset.insert(table, _)
-                resp.SimpleString(
-                  int.to_string(timestamp) <> "-" <> int.to_string(sequence),
-                )
-              }
-              value.Stream([#(last_ts, last_seq, _), ..] as entries) -> {
-                use <- validate(last_ts, last_seq)
-                [
-                  #(
-                    stream,
-                    value.Stream([#(timestamp, sequence, data), ..entries]),
-                    None,
-                  ),
-                ]
-                |> uset.insert(table, _)
-                resp.SimpleString(
-                  int.to_string(timestamp) <> "-" <> int.to_string(sequence),
-                )
-              }
-              _ -> resp.Null(resp.NullString)
-            }
+            handle_xadd(table, stream, entry_id, data)
             |> send_resp(conn)
           actor.continue(Nil)
         }
@@ -230,4 +186,119 @@ fn load_rdb(table: USet(Row), config: Config) {
   |> result.unwrap(or: False)
 
   None
+}
+
+// HANDLERS
+
+fn handle_xadd(
+  table: Table,
+  stream: String,
+  entry_id: command.StreamEntryId,
+  data: List(#(String, String)),
+) -> Resp {
+  case lookup(table, stream), entry_id {
+    // New stream, auto id
+    value.None, command.AutoGenerate -> {
+      let timestamp = erlang.system_time(erlang.Millisecond)
+      [#(stream, value.Stream([#(timestamp, 0, data)]), None)]
+      |> uset.insert(table, _)
+      entry_id_string(timestamp, 0)
+    }
+    // New stream, auto sequence
+    value.None, command.AutoSequence(timestamp) -> {
+      use <- validate_entry_id(
+        timestamp: timestamp,
+        sequence: 0,
+        last_ts: 0,
+        last_seq: 0,
+      )
+      [#(stream, value.Stream([#(timestamp, 0, data)]), None)]
+      |> uset.insert(table, _)
+      entry_id_string(timestamp, 0)
+    }
+    // New stream, explicit id
+    value.None, command.Explicit(timestamp, sequence) -> {
+      use <- validate_entry_id(
+        timestamp: timestamp,
+        sequence: sequence,
+        last_ts: 0,
+        last_seq: 0,
+      )
+      [#(stream, value.Stream([#(timestamp, sequence, data)]), None)]
+      |> uset.insert(table, _)
+      entry_id_string(timestamp, sequence)
+    }
+    // Existing stream, auto id
+    value.Stream([#(last_ts, last_seq, _), ..] as entries), command.AutoGenerate
+    -> {
+      let time = erlang.system_time(erlang.Millisecond)
+      let #(timestamp, sequence) = case int.compare(last_ts, time) {
+        Lt -> #(time, 0)
+        Eq | Gt -> #(last_ts, last_seq + 1)
+      }
+      [#(stream, value.Stream([#(timestamp, sequence, data), ..entries]), None)]
+      |> uset.insert(table, _)
+      entry_id_string(timestamp, sequence)
+    }
+    // Existing stream, auto sequence
+    value.Stream([#(last_ts, last_seq, _), ..] as entries),
+      command.AutoSequence(timestamp)
+    -> {
+      let sequence = case int.compare(last_ts, timestamp) {
+        Lt | Gt -> 0
+        Eq -> last_seq + 1
+      }
+      use <- validate_entry_id(
+        timestamp: timestamp,
+        sequence: sequence,
+        last_ts: last_ts,
+        last_seq: last_seq,
+      )
+      [#(stream, value.Stream([#(timestamp, sequence, data), ..entries]), None)]
+      |> uset.insert(table, _)
+      entry_id_string(timestamp, sequence)
+    }
+    // Existing stream, explicit id
+    value.Stream([#(last_ts, last_seq, _), ..] as entries),
+      command.Explicit(timestamp, sequence)
+    -> {
+      use <- validate_entry_id(
+        timestamp: timestamp,
+        sequence: sequence,
+        last_ts: last_ts,
+        last_seq: last_seq,
+      )
+      [#(stream, value.Stream([#(timestamp, sequence, data), ..entries]), None)]
+      |> uset.insert(table, _)
+      entry_id_string(timestamp, sequence)
+    }
+    _, _ -> resp.Null(resp.NullString)
+  }
+}
+
+fn entry_id_string(timestamp: Int, sequence: Int) -> Resp {
+  resp.SimpleString(int.to_string(timestamp) <> "-" <> int.to_string(sequence))
+}
+
+fn validate_entry_id(
+  last_ts last_ts: Int,
+  last_seq last_seq: Int,
+  timestamp timestamp: Int,
+  sequence sequence: Int,
+  when_valid callback: fn() -> Resp,
+) {
+  use <- bool.guard(
+    when: timestamp < 0 || { timestamp == 0 && sequence < 1 },
+    return: resp.SimpleError(
+      "ERR The ID specified in XADD must be greater than 0-0",
+    ),
+  )
+  bool.guard(
+    when: timestamp < last_ts
+      || { timestamp == last_ts && sequence <= last_seq },
+    return: resp.SimpleError(
+      "ERR The ID specified in XADD is equal or smaller than the target stream top item",
+    ),
+    otherwise: callback,
+  )
 }
