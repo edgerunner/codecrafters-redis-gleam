@@ -1,6 +1,7 @@
 import gleam/int
 import gleam/list
 import gleam/option.{type Option}
+import gleam/pair
 import gleam/result
 import gleam/string
 import redis/config
@@ -14,11 +15,17 @@ pub type Command {
   Config(ConfigSubcommand)
   Keys(Option(String))
   Type(String)
-  XAdd(stream: String, entry: String, data: List(#(String, String)))
+  XAdd(stream: String, id: StreamEntryId, data: List(#(String, String)))
 }
 
 pub type ConfigSubcommand {
   ConfigGet(config.Parameter)
+}
+
+pub type StreamEntryId {
+  AutoGenerate
+  AutoSequence(timestamp: Int)
+  Explicit(timestamp: Int, sequence: Int)
 }
 
 pub type Error {
@@ -73,8 +80,35 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
         |> result.replace_error(InvalidArgument)
         |> result.then(callback)
       }
+      let as_entry_id = fn(
+        id_string: String,
+        callback: fn(StreamEntryId) -> Result(a, Error),
+      ) {
+        case id_string, string.split_once(id_string, on: "-") {
+          "*", _ -> callback(AutoGenerate)
+          _, Ok(#(timestamp, "*")) ->
+            int.parse(timestamp)
+            |> result.replace_error(InvalidArgument)
+            |> result.map(AutoSequence)
+            |> result.then(callback)
+          _, Ok(#(timestamp, sequence)) -> {
+            use timestamp <- result.then(
+              int.parse(timestamp)
+              |> result.replace_error(InvalidArgument),
+            )
+            use sequence <- result.then(
+              int.parse(sequence)
+              |> result.replace_error(InvalidArgument),
+            )
+            Explicit(timestamp, sequence)
+            |> callback
+          }
+          _, _ -> Error(InvalidArgument)
+        }
+      }
       use stream <- as_string(stream)
       use entry <- as_string(entry)
+      use entry <- as_entry_id(entry)
 
       let data =
         list.sized_chunk(in: data, into: 2)

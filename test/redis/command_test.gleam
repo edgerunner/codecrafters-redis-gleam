@@ -131,18 +131,49 @@ pub fn parse_type_test() {
 import gleam/list
 import gleam/string
 
-pub fn parse_xadd_test() {
+pub fn parse_xadd_explicit_test() {
   "XADD fruits 12345678-0 mango 5 kiwi 48 apple 12"
-  |> string.split(on: " ")
-  |> list.map(resp.BulkString)
-  |> resp.Array
+  |> command_resp
   |> command.parse
   |> should.be_ok
   |> should.equal(
-    command.XAdd(stream: "fruits", entry: "12345678-0", data: [
+    command.XAdd(stream: "fruits", id: command.Explicit(12_345_678, 0), data: [
       #("mango", "5"),
       #("kiwi", "48"),
       #("apple", "12"),
     ]),
   )
+}
+
+pub fn parse_xadd_auto_sequence_test() {
+  "XADD fruits 12345678-* mango 15 apple 12"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(
+    command.XAdd(stream: "fruits", id: command.AutoSequence(12_345_678), data: [
+      #("mango", "15"),
+      #("apple", "12"),
+    ]),
+  )
+}
+
+pub fn parse_xadd_auto_test() {
+  "XADD fruits * banana none mango 15 apple 12"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(
+    command.XAdd(stream: "fruits", id: command.AutoGenerate, data: [
+      #("banana", "none"),
+      #("mango", "15"),
+      #("apple", "12"),
+    ]),
+  )
+}
+
+fn command_resp(str: String) -> resp.Resp {
+  string.split(str, on: " ")
+  |> list.map(resp.BulkString)
+  |> resp.Array
 }

@@ -1,6 +1,6 @@
 pub type RedisValue {
   String(String)
-  Stream(List(#(String, List(#(String, String)))))
+  Stream(List(#(Int, Int, List(#(String, String)))))
   None
 }
 

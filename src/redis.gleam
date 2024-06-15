@@ -4,6 +4,7 @@ import gleam/bytes_builder
 import gleam/dict
 import gleam/erlang
 import gleam/erlang/process
+import gleam/int
 import gleam/io
 import gleam/iterator
 import gleam/list
@@ -130,18 +131,33 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
           actor.continue(Nil)
         }
 
-        command.XAdd(stream, entry, data) -> {
+        command.XAdd(stream, entry_id, data) -> {
+          let #(timestamp, sequence) = case entry_id {
+            command.AutoGenerate -> #(erlang.system_time(erlang.Millisecond), 0)
+            command.AutoSequence(timestamp) -> #(timestamp, 0)
+            command.Explicit(timestamp, sequence) -> #(timestamp, sequence)
+          }
           let assert Ok(_) =
             case lookup(table, stream) {
               value.None -> {
-                [#(stream, value.Stream([#(entry, data)]), None)]
+                [#(stream, value.Stream([#(timestamp, sequence, data)]), None)]
                 |> uset.insert(table, _)
-                resp.SimpleString(entry)
+                resp.SimpleString(
+                  int.to_string(timestamp) <> "-" <> int.to_string(sequence),
+                )
               }
               value.Stream(entries) -> {
-                [#(stream, value.Stream([#(entry, data), ..entries]), None)]
+                [
+                  #(
+                    stream,
+                    value.Stream([#(timestamp, sequence, data), ..entries]),
+                    None,
+                  ),
+                ]
                 |> uset.insert(table, _)
-                resp.SimpleString(entry)
+                resp.SimpleString(
+                  int.to_string(timestamp) <> "-" <> int.to_string(sequence),
+                )
               }
               _ -> resp.Null(resp.NullString)
             }
