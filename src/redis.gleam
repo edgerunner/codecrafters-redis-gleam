@@ -139,6 +139,12 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             command.Explicit(timestamp, sequence) -> #(timestamp, sequence)
           }
           let validate = fn(last_ts, last_seq, callback) {
+            use <- bool.guard(
+              when: timestamp < 0 || { timestamp == 0 && sequence < 1 },
+              return: resp.SimpleError(
+                "ERR The ID specified in XADD must be greater than 0-0",
+              ),
+            )
             bool.guard(
               when: timestamp < last_ts
                 || { timestamp == last_ts && sequence <= last_seq },
