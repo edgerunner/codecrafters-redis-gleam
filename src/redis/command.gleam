@@ -65,7 +65,8 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     "CONFIG", _ -> parse_config(args)
 
     "KEYS", [BulkString("*")] -> Ok(Keys(option.None))
-    "KEYS", [BulkString(_)] -> todo
+    "KEYS", [BulkString(_)] ->
+      Error(UnknownFlag("KEYS command matchers will be implemented soon"))
     "KEYS", _ -> Error(WrongNumberOfArguments)
 
     "TYPE", [key] ->

@@ -67,7 +67,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             case lookup(table, key) {
               value.None -> resp.Null(resp.NullString)
               value.String(s) -> resp.BulkString(s)
-              _ -> todo as "can only get strings or nothing for now"
+              _ ->
+                resp.SimpleError("TODO can only get strings or nothing for now")
             }
           }
           command.Config(subcommand) -> {
@@ -100,7 +101,10 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             |> iterator.to_list
             |> resp.Array
           }
-          command.Keys(_) -> todo as "KEYS command will be implemented soon"
+          command.Keys(_) ->
+            resp.SimpleError(
+              "TODO KEYS command with matching will be implemented soon",
+            )
 
           command.Type(key) -> {
             lookup(table, key)
