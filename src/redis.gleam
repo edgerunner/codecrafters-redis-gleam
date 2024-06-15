@@ -47,67 +47,47 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
       let assert Ok(#(resp, _)) = resp_binary |> resp.parse
 
       let assert Ok(command) = command.parse(resp)
-      case command {
-        command.Ping -> {
-          let assert Ok(_) =
-            resp.SimpleString("PONG")
-            |> send_resp(conn)
+      let assert Ok(_) =
+        case command {
+          command.Ping -> resp.SimpleString("PONG")
+          command.Echo(payload) -> payload
 
-          actor.continue(Nil)
-        }
-        command.Echo(payload) -> {
-          let assert Ok(_) = send_resp(payload, conn)
-          actor.continue(Nil)
-        }
-
-        command.Set(key: key, value: value, expiry: None) -> {
-          uset.insert(table, [#(key, value.String(value), None)])
-          let assert Ok(_) =
+          command.Set(key: key, value: value, expiry: None) -> {
+            uset.insert(table, [#(key, value.String(value), None)])
             resp.SimpleString("OK")
-            |> send_resp(conn)
-          actor.continue(Nil)
-        }
+          }
 
-        command.Set(key: key, value: value, expiry: Some(expiry)) -> {
-          let deadline = erlang.system_time(erlang.Millisecond) + expiry
-          uset.insert(table, [#(key, value.String(value), Some(deadline))])
-          let assert Ok(_) =
+          command.Set(key: key, value: value, expiry: Some(expiry)) -> {
+            let deadline = erlang.system_time(erlang.Millisecond) + expiry
+            uset.insert(table, [#(key, value.String(value), Some(deadline))])
             resp.SimpleString("OK")
-            |> send_resp(conn)
-          actor.continue(Nil)
-        }
+          }
 
-        command.Get(key) -> {
-          let assert Ok(_) =
+          command.Get(key) -> {
             case lookup(table, key) {
               value.None -> resp.Null(resp.NullString)
               value.String(s) -> resp.BulkString(s)
               _ -> todo as "can only get strings or nothing for now"
             }
-            |> send_resp(conn)
-
-          actor.continue(Nil)
-        }
-        command.Config(subcommand) -> {
-          let assert Ok(_) = case subcommand {
-            command.ConfigGet(parameter) -> {
-              case parameter {
-                config.Dir -> config.dir
-                config.DbFilename -> config.dbfilename
+          }
+          command.Config(subcommand) -> {
+            case subcommand {
+              command.ConfigGet(parameter) -> {
+                case parameter {
+                  config.Dir -> config.dir
+                  config.DbFilename -> config.dbfilename
+                }
+                |> option.map(resp.BulkString)
+                |> option.unwrap(resp.Null(resp.NullString))
+                |> list.wrap
+                |> list.prepend(
+                  resp.BulkString(config.parameter_key(parameter)),
+                )
+                |> resp.Array
               }
-              |> option.map(resp.BulkString)
-              |> option.unwrap(resp.Null(resp.NullString))
-              |> list.wrap
-              |> list.prepend(resp.BulkString(config.parameter_key(parameter)))
-              |> resp.Array
-              |> send_resp(conn)
             }
           }
-
-          actor.continue(Nil)
-        }
-        command.Keys(None) -> {
-          let assert Ok(_) =
+          command.Keys(None) -> {
             {
               use key <- iterator.unfold(from: uset.first(table))
 
@@ -119,27 +99,21 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             |> iterator.map(resp.BulkString)
             |> iterator.to_list
             |> resp.Array
-            |> send_resp(conn)
-          actor.continue(Nil)
-        }
-        command.Keys(_) -> todo as "KEYS command will be implemented soon"
+          }
+          command.Keys(_) -> todo as "KEYS command will be implemented soon"
 
-        command.Type(key) -> {
-          let assert Ok(_) =
+          command.Type(key) -> {
             lookup(table, key)
             |> value.to_type_name
             |> resp.SimpleString
-            |> send_resp(conn)
-          actor.continue(Nil)
-        }
+          }
 
-        command.XAdd(stream, entry_id, data) -> {
-          let assert Ok(_) =
+          command.XAdd(stream, entry_id, data) -> {
             handle_xadd(table, stream, entry_id, data)
-            |> send_resp(conn)
-          actor.continue(Nil)
+          }
         }
-      }
+        |> send_resp(conn)
+      actor.continue(Nil)
     }
     User(_) -> actor.continue(Nil)
   }
