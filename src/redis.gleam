@@ -270,13 +270,9 @@ fn handle_xadd(
     let assert [#(timestamp, sequence, _), ..] = entries
     [#(stream, value.Stream(entries), None)]
     |> uset.insert(table, _)
-    entry_id_string(timestamp, sequence)
+    resp.stream_entry_id(timestamp, sequence)
   })
   |> result.unwrap_both
-}
-
-fn entry_id_string(timestamp: Int, sequence: Int) -> Resp {
-  resp.SimpleString(int.to_string(timestamp) <> "-" <> int.to_string(sequence))
 }
 
 fn validate_entry_id(

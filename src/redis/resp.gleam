@@ -198,3 +198,9 @@ pub fn to_list(resp: Resp) -> List(Resp) {
     Null(_) -> []
   }
 }
+
+// Helpers
+
+pub fn stream_entry_id(timestamp: Int, sequence: Int) -> Resp {
+  SimpleString(int.to_string(timestamp) <> "-" <> int.to_string(sequence))
+}
