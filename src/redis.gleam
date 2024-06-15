@@ -1,5 +1,6 @@
 import bravo
 import bravo/uset.{type USet}
+import gleam/bool
 import gleam/bytes_builder
 import gleam/dict
 import gleam/erlang
@@ -9,7 +10,6 @@ import gleam/io
 import gleam/iterator
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/order
 import gleam/otp/actor
 import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
@@ -138,19 +138,20 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             command.AutoSequence(timestamp) -> #(timestamp, 0)
             command.Explicit(timestamp, sequence) -> #(timestamp, sequence)
           }
-          let validate = fn(last_ts, last_seq) {
-            case
-              int.compare(last_ts, timestamp),
-              int.compare(last_seq, sequence)
-            {
-              order.Lt, _ | order.Eq, order.Gt -> #(timestamp, sequence)
-              _, _ -> #(last_ts, int.max(last_seq + 1, sequence))
-            }
+          let validate = fn(last_ts, last_seq, callback) {
+            bool.guard(
+              when: timestamp < last_ts
+                || { timestamp == last_ts && sequence <= last_seq },
+              return: resp.SimpleError(
+                "ERR The ID specified in XADD is equal or smaller than the target stream top item",
+              ),
+              otherwise: callback,
+            )
           }
           let assert Ok(_) =
             case lookup(table, stream) {
               value.None -> {
-                let #(timestamp, sequence) = validate(0, 0)
+                use <- validate(0, 0)
                 [#(stream, value.Stream([#(timestamp, sequence, data)]), None)]
                 |> uset.insert(table, _)
                 resp.SimpleString(
@@ -158,7 +159,7 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
                 )
               }
               value.Stream([#(last_ts, last_seq, _), ..] as entries) -> {
-                let #(timestamp, sequence) = validate(last_ts, last_seq)
+                use <- validate(last_ts, last_seq)
                 [
                   #(
                     stream,
