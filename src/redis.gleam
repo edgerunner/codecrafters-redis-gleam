@@ -200,9 +200,7 @@ fn handle_xadd(
     // New stream, auto id
     value.None, command.AutoGenerate -> {
       let timestamp = erlang.system_time(erlang.Millisecond)
-      [#(stream, value.Stream([#(timestamp, 0, data)]), None)]
-      |> uset.insert(table, _)
-      entry_id_string(timestamp, 0)
+      Ok([#(timestamp, 0, data)])
     }
     // New stream, auto sequence
     value.None, command.AutoSequence(timestamp) -> {
@@ -212,9 +210,7 @@ fn handle_xadd(
         last_ts: 0,
         last_seq: 0,
       )
-      [#(stream, value.Stream([#(timestamp, 0, data)]), None)]
-      |> uset.insert(table, _)
-      entry_id_string(timestamp, 0)
+      Ok([#(timestamp, 0, data)])
     }
     // New stream, explicit id
     value.None, command.Explicit(timestamp, sequence) -> {
@@ -224,9 +220,7 @@ fn handle_xadd(
         last_ts: 0,
         last_seq: 0,
       )
-      [#(stream, value.Stream([#(timestamp, sequence, data)]), None)]
-      |> uset.insert(table, _)
-      entry_id_string(timestamp, sequence)
+      Ok([#(timestamp, sequence, data)])
     }
     // Existing stream, auto id
     value.Stream([#(last_ts, last_seq, _), ..] as entries), command.AutoGenerate
@@ -236,9 +230,7 @@ fn handle_xadd(
         Lt -> #(time, 0)
         Eq | Gt -> #(last_ts, last_seq + 1)
       }
-      [#(stream, value.Stream([#(timestamp, sequence, data), ..entries]), None)]
-      |> uset.insert(table, _)
-      entry_id_string(timestamp, sequence)
+      Ok([#(timestamp, sequence, data), ..entries])
     }
     // Existing stream, auto sequence
     value.Stream([#(last_ts, last_seq, _), ..] as entries),
@@ -254,9 +246,7 @@ fn handle_xadd(
         last_ts: last_ts,
         last_seq: last_seq,
       )
-      [#(stream, value.Stream([#(timestamp, sequence, data), ..entries]), None)]
-      |> uset.insert(table, _)
-      entry_id_string(timestamp, sequence)
+      Ok([#(timestamp, sequence, data), ..entries])
     }
     // Existing stream, explicit id
     value.Stream([#(last_ts, last_seq, _), ..] as entries),
@@ -268,12 +258,17 @@ fn handle_xadd(
         last_ts: last_ts,
         last_seq: last_seq,
       )
-      [#(stream, value.Stream([#(timestamp, sequence, data), ..entries]), None)]
-      |> uset.insert(table, _)
-      entry_id_string(timestamp, sequence)
+      Ok([#(timestamp, sequence, data), ..entries])
     }
-    _, _ -> resp.Null(resp.NullString)
+    _, _ -> Error(resp.Null(resp.NullString))
   }
+  |> result.map(fn(entries) {
+    let assert [#(timestamp, sequence, _), ..] = entries
+    [#(stream, value.Stream(entries), None)]
+    |> uset.insert(table, _)
+    entry_id_string(timestamp, sequence)
+  })
+  |> result.unwrap_both
 }
 
 fn entry_id_string(timestamp: Int, sequence: Int) -> Resp {
@@ -285,20 +280,20 @@ fn validate_entry_id(
   last_seq last_seq: Int,
   timestamp timestamp: Int,
   sequence sequence: Int,
-  when_valid callback: fn() -> Resp,
+  when_valid callback: fn() -> Result(a, Resp),
 ) {
   use <- bool.guard(
     when: timestamp < 0 || { timestamp == 0 && sequence < 1 },
-    return: resp.SimpleError(
+    return: Error(resp.SimpleError(
       "ERR The ID specified in XADD must be greater than 0-0",
-    ),
+    )),
   )
   bool.guard(
     when: timestamp < last_ts
       || { timestamp == last_ts && sequence <= last_seq },
-    return: resp.SimpleError(
+    return: Error(resp.SimpleError(
       "ERR The ID specified in XADD is equal or smaller than the target stream top item",
-    ),
+    )),
     otherwise: callback,
   )
 }
