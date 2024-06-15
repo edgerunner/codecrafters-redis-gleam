@@ -3,6 +3,7 @@ pub type Resp {
   BulkString(String)
   Array(List(Resp))
   Null(NullType)
+  SimpleError(String)
 }
 
 pub type NullType {
@@ -33,7 +34,8 @@ const crlf = <<"\r\n":utf8>>
 pub fn parse(input: BitArray) -> Parse(Resp) {
   case input {
     <<"_":utf8, rest:bits>> -> parse_null(NullPrimitive, rest)
-    <<"+":utf8, rest:bits>> -> parse_simple_string(rest)
+    <<"+":utf8, rest:bits>> -> parse_simple(rest) |> map(SimpleString)
+    <<"-":utf8, rest:bits>> -> parse_simple(rest) |> map(SimpleError)
     <<"$-1":utf8, rest:bits>> -> parse_null(NullString, rest)
     <<"$":utf8, rest:bits>> -> parse_bulk_string(rest)
     <<"*-1":utf8, rest:bits>> -> parse_null(NullArray, rest)
@@ -47,17 +49,22 @@ fn parse_null(null_type: NullType, input: BitArray) -> Parse(Resp) {
   #(Null(null_type), rest)
 }
 
-fn parse_simple_string(input: BitArray) -> Parse(Resp) {
+fn map(parse: Parse(a), with mapper: fn(a) -> b) -> Parse(b) {
+  use #(a, rest) <- result.map(parse)
+  #(mapper(a), rest)
+}
+
+fn parse_simple(input: BitArray) -> Parse(String) {
   case input {
-    <<"\r\n":utf8, rest:bits>> -> Ok(#(SimpleString(""), rest))
+    <<"\r\n":utf8, rest:bits>> -> Ok(#("", rest))
     <<"\r":utf8>> | <<"\n":utf8>> | <<>> -> Error(UnexpectedEnd)
     <<"\r":utf8, _rest:bits>> | <<"\n":utf8, _rest:bits>> ->
       Error(UnexpectedInput(input))
     <<char:utf8_codepoint, rest:bits>> -> {
-      use #(tail_resp, rest) <- result.map(parse_simple_string(rest))
-      let assert SimpleString(tail) = tail_resp
+      use #(tail, rest) <- result.map(parse_simple(rest))
+
       let head = string.from_utf_codepoints([char])
-      #(SimpleString(head <> tail), rest)
+      #(head <> tail, rest)
     }
 
     unexpected -> Error(UnexpectedInput(unexpected))
@@ -138,6 +145,7 @@ pub fn encode(resp: Resp) -> BitArray {
   case resp {
     Null(n) -> encode_null(n)
     SimpleString(s) -> encode_simple_string(s)
+    SimpleError(e) -> encode_simple_error(e)
     BulkString(s) -> encode_bulk_string(s)
     Array(a) -> encode_array(a)
   }
@@ -153,6 +161,10 @@ fn encode_null(null_type: NullType) -> BitArray {
 
 fn encode_simple_string(string: String) -> BitArray {
   <<"+":utf8, string:utf8, crlf:bits>>
+}
+
+fn encode_simple_error(string: String) -> BitArray {
+  <<"-":utf8, string:utf8, crlf:bits>>
 }
 
 fn encode_bulk_string(string: String) -> BitArray {
@@ -181,7 +193,7 @@ pub fn to_string(resp: Resp) -> Result(String, Nil) {
 
 pub fn to_list(resp: Resp) -> List(Resp) {
   case resp {
-    SimpleString(_) | BulkString(_) -> [resp]
+    SimpleString(_) | BulkString(_) | SimpleError(_) -> [resp]
     Array(list) -> list
     Null(_) -> []
   }

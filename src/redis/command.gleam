@@ -41,6 +41,7 @@ pub fn parse(resp: Resp) -> Result(Command, Error) {
     SimpleString(_) | BulkString(_) -> parse_list([resp])
     Array(list) -> parse_list(list)
     Null(_) -> Error(InvalidCommand)
+    resp.SimpleError(e) -> Error(UnknownCommand(e))
   }
 }
 

@@ -32,6 +32,14 @@ pub fn fail_parse_simple_string_invalid_end_test() {
   |> should.equal(resp.UnexpectedEnd)
 }
 
+pub fn parse_simple_error_test() {
+  <<"-WRONG\r\n":utf8>>
+  |> resp.parse
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.SimpleError("WRONG"))
+}
+
 pub fn parse_bulk_string_echo_test() {
   <<"$4\r\nECHO\r\n":utf8>>
   |> resp.parse
@@ -111,6 +119,12 @@ pub fn encode_simple_string_pong_test() {
   resp.SimpleString("PONG")
   |> resp.encode
   |> should.equal(<<"+PONG\r\n":utf8>>)
+}
+
+pub fn encode_simple_error_wrong_test() {
+  resp.SimpleError("WRONG")
+  |> resp.encode
+  |> should.equal(<<"-WRONG\r\n":utf8>>)
 }
 
 pub fn encode_null_test() {
