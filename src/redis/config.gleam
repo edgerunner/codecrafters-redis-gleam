@@ -29,3 +29,9 @@ pub fn parameter_key(parameter: Parameter) -> String {
     DbFilename -> "dbfilename"
   }
 }
+
+pub fn db_full_path(config: Config) -> Option(String) {
+  use dir <- option.then(config.dir)
+  use dbfilename <- option.map(config.dbfilename)
+  dir <> "/" <> dbfilename
+}
