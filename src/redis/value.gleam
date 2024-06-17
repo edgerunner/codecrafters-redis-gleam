@@ -1,11 +1,10 @@
+import redis/stream.{type Stream}
+
 pub type RedisValue {
   String(String)
-  Stream(List(StreamEntry))
+  Stream(Stream)
   None
 }
-
-pub type StreamEntry =
-  #(Int, Int, List(#(String, String)))
 
 pub fn to_type_name(value: RedisValue) -> String {
   case value {

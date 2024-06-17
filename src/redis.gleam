@@ -5,6 +5,7 @@ import gleam/iterator
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/otp/actor
+import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
 import redis/command
 import redis/config.{type Config}
@@ -93,9 +94,26 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             |> resp.SimpleString
           }
 
-          command.XAdd(stream, entry_id, data) -> {
-            stream.handle_xadd(table, stream, entry_id, data)
-          }
+          command.XAdd(stream_key, entry_id, data) ->
+            {
+              case store.lookup(table, stream_key) {
+                value.None -> {
+                  use stream <- result.map(stream.new(stream_key))
+                  store.insert(
+                    into: table,
+                    key: stream_key,
+                    value: value.Stream(stream),
+                    deadline: None,
+                  )
+                  stream
+                }
+                value.Stream(stream) -> Ok(stream)
+                _ -> Error("")
+              }
+              |> result.map(stream.handle_xadd(_, entry_id, data))
+            }
+            |> result.map_error(resp.SimpleError)
+            |> result.unwrap_both
         }
         |> send_resp(conn)
       actor.continue(Nil)
