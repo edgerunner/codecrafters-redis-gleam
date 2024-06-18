@@ -114,6 +114,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             }
             |> result.map_error(resp.SimpleError)
             |> result.unwrap_both
+
+          command.XRange(stream, start, end) -> todo
         }
         |> send_resp(conn)
       actor.continue(Nil)

@@ -151,7 +151,7 @@ pub fn parse_xadd_auto_sequence_test() {
   |> command.parse
   |> should.be_ok
   |> should.equal(
-    command.XAdd(stream: "fruits", id: command.AutoSequence(12_345_678), data: [
+    command.XAdd(stream: "fruits", id: command.Timestamp(12_345_678), data: [
       #("mango", "15"),
       #("apple", "12"),
     ]),
@@ -164,12 +164,60 @@ pub fn parse_xadd_auto_test() {
   |> command.parse
   |> should.be_ok
   |> should.equal(
-    command.XAdd(stream: "fruits", id: command.AutoGenerate, data: [
+    command.XAdd(stream: "fruits", id: command.Unspecified, data: [
       #("banana", "none"),
       #("mango", "15"),
       #("apple", "12"),
     ]),
   )
+}
+
+pub fn parse_xrange_explicit_test() {
+  "XRANGE fruits 1526985054069-0 1526985054079-5"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.XRange(
+    stream: "fruits",
+    start: command.Explicit(1_526_985_054_069, 0),
+    end: command.Explicit(1_526_985_054_079, 5),
+  ))
+}
+
+pub fn parse_xrange_timestamp_test() {
+  "XRANGE fruits 1526985054069 1526985054079"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.XRange(
+    stream: "fruits",
+    start: command.Timestamp(1_526_985_054_069),
+    end: command.Timestamp(1_526_985_054_079),
+  ))
+}
+
+pub fn parse_xrange_minus_start_test() {
+  "XRANGE fruits - 1526985054079"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.XRange(
+    stream: "fruits",
+    start: command.Unspecified,
+    end: command.Timestamp(1_526_985_054_079),
+  ))
+}
+
+pub fn parse_xrange_plus_end_test() {
+  "XRANGE fruits 1526985054069 +"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.XRange(
+    stream: "fruits",
+    start: command.Timestamp(1_526_985_054_069),
+    end: command.Unspecified,
+  ))
 }
 
 fn command_resp(str: String) -> resp.Resp {

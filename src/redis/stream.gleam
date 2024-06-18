@@ -29,7 +29,7 @@ pub fn handle_xadd(
   data: List(#(String, String)),
 ) -> Resp {
   case entry_id {
-    command.AutoGenerate -> {
+    command.Unspecified -> {
       let time = erlang.system_time(erlang.Millisecond)
       let #(last_ts, last_seq) = last_id(stream)
       let id = case int.compare(last_ts, time) {
@@ -38,7 +38,7 @@ pub fn handle_xadd(
       }
       add(Entry(id, data), stream)
     }
-    command.AutoSequence(timestamp) -> {
+    command.Timestamp(timestamp) -> {
       let #(last_ts, last_seq) = last_id(stream)
       let sequence = case int.compare(last_ts, timestamp) {
         Lt | Gt -> 0

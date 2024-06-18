@@ -15,6 +15,7 @@ pub type Command {
   Keys(Option(String))
   Type(String)
   XAdd(stream: String, id: StreamEntryId, data: List(#(String, String)))
+  XRange(stream: String, start: StreamEntryId, end: StreamEntryId)
 }
 
 pub type ConfigSubcommand {
@@ -22,8 +23,8 @@ pub type ConfigSubcommand {
 }
 
 pub type StreamEntryId {
-  AutoGenerate
-  AutoSequence(timestamp: Int)
+  Unspecified
+  Timestamp(timestamp: Int)
   Explicit(timestamp: Int, sequence: Int)
 }
 
@@ -76,40 +77,8 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     "TYPE", _ -> Error(WrongNumberOfArguments)
 
     "XADD", [stream, entry, ..data] -> {
-      let as_string = fn(resp: Resp, callback: fn(String) -> Result(a, Error)) {
-        resp.to_string(resp)
-        |> result.replace_error(InvalidArgument)
-        |> result.then(callback)
-      }
-      let as_entry_id = fn(
-        id_string: String,
-        callback: fn(StreamEntryId) -> Result(a, Error),
-      ) {
-        case id_string, string.split_once(id_string, on: "-") {
-          "*", _ -> callback(AutoGenerate)
-          _, Ok(#(timestamp, "*")) ->
-            int.parse(timestamp)
-            |> result.replace_error(InvalidArgument)
-            |> result.map(AutoSequence)
-            |> result.then(callback)
-          _, Ok(#(timestamp, sequence)) -> {
-            use timestamp <- result.then(
-              int.parse(timestamp)
-              |> result.replace_error(InvalidArgument),
-            )
-            use sequence <- result.then(
-              int.parse(sequence)
-              |> result.replace_error(InvalidArgument),
-            )
-            Explicit(timestamp, sequence)
-            |> callback
-          }
-          _, _ -> Error(InvalidArgument)
-        }
-      }
       use stream <- as_string(stream)
-      use entry <- as_string(entry)
-      use entry <- as_entry_id(entry)
+      use entry <- as_xadd_entry_id(entry)
 
       let data =
         list.sized_chunk(in: data, into: 2)
@@ -124,6 +93,14 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
 
       Ok(XAdd(stream, entry, data))
     }
+
+    "XRANGE", [stream, start, end] -> {
+      use stream <- as_string(stream)
+      use start <- as_xrange_entry_id(start, "-")
+      use end <- as_xrange_entry_id(end, "+")
+      Ok(XRange(stream, start, end))
+    }
+    "XRANGE", _ -> Error(WrongNumberOfArguments)
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }
@@ -180,4 +157,54 @@ fn with_command(
   use command <- result.then(command)
   use args <- result.then(args)
   fun(command, args)
+}
+
+fn as_xadd_entry_id(resp: Resp, callback: fn(StreamEntryId) -> Result(a, Error)) {
+  use id_string <- as_string(resp)
+  case id_string, string.split_once(id_string, on: "-") {
+    "*", _ -> callback(Unspecified)
+    _, Ok(#(timestamp, "*")) -> {
+      use timestamp <- as_int(timestamp)
+      Timestamp(timestamp) |> callback
+    }
+    _, Ok(#(timestamp, sequence)) -> {
+      use timestamp <- as_int(timestamp)
+      use sequence <- as_int(sequence)
+      Explicit(timestamp, sequence)
+      |> callback
+    }
+    _, _ -> Error(InvalidArgument)
+  }
+}
+
+fn as_xrange_entry_id(
+  resp: Resp,
+  wildcard: String,
+  callback: fn(StreamEntryId) -> Result(a, Error),
+) {
+  use id_string <- as_string(resp)
+  case id_string, string.split_once(id_string, on: "-") {
+    w, _ if w == wildcard -> Unspecified |> callback
+    t, Error(_) -> {
+      use timestamp <- as_int(t)
+      Timestamp(timestamp) |> callback
+    }
+    _, Ok(#(timestamp, sequence)) -> {
+      use timestamp <- as_int(timestamp)
+      use sequence <- as_int(sequence)
+      Explicit(timestamp, sequence) |> callback
+    }
+  }
+}
+
+fn as_string(resp: Resp, callback: fn(String) -> Result(a, Error)) {
+  resp.to_string(resp)
+  |> result.replace_error(InvalidArgument)
+  |> result.then(callback)
+}
+
+fn as_int(string: String, callback: fn(Int) -> Result(a, Error)) {
+  int.parse(string)
+  |> result.replace_error(InvalidArgument)
+  |> result.then(callback)
 }
