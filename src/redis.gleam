@@ -108,7 +108,7 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
                   stream
                 }
                 value.Stream(stream) -> Ok(stream)
-                _ -> Error("")
+                _ -> Error("ERR " <> stream_key <> " is not a stream")
               }
               |> result.map(stream.handle_xadd(_, entry_id, data))
             }
