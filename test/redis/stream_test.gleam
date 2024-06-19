@@ -1,4 +1,3 @@
-import gleam/erlang/process
 import gleeunit/should
 import redis/command.{Explicit}
 import redis/resp.{Array, BulkString}

@@ -225,9 +225,10 @@ pub fn parse_xread_one_stream_test() {
   |> command_resp
   |> command.parse
   |> should.be_ok
-  |> should.equal(
-    command.XRead(streams: [#("fruits", command.Explicit(1_526_985_054_069, 0))]),
-  )
+  |> should.equal(command.XRead(
+    streams: [#("fruits", command.Explicit(1_526_985_054_069, 0))],
+    block: option.None,
+  ))
 }
 
 pub fn parse_xread_three_streams_test() {
@@ -235,13 +236,25 @@ pub fn parse_xread_three_streams_test() {
   |> command_resp
   |> command.parse
   |> should.be_ok
-  |> should.equal(
-    command.XRead(streams: [
+  |> should.equal(command.XRead(
+    streams: [
       #("fruits", command.Explicit(1_526_985_054_069, 0)),
       #("shoes", command.Timestamp(1_526_986_857_397)),
       #("clock", command.Unspecified),
-    ]),
-  )
+    ],
+    block: option.None,
+  ))
+}
+
+pub fn parse_xread_block_1500_test() {
+  "XREAD BLOCK 1500 STREAMS fruits 1526985054069-0"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.XRead(
+    streams: [#("fruits", command.Explicit(1_526_985_054_069, 0))],
+    block: option.Some(1500),
+  ))
 }
 
 fn command_resp(str: String) -> resp.Resp {

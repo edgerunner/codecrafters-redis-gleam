@@ -16,7 +16,7 @@ pub type Command {
   Type(String)
   XAdd(stream: String, id: StreamEntryId, data: List(#(String, String)))
   XRange(stream: String, start: StreamEntryId, end: StreamEntryId)
-  XRead(streams: List(#(String, StreamEntryId)))
+  XRead(streams: List(#(String, StreamEntryId)), block: Option(Int))
 }
 
 pub type ConfigSubcommand {
@@ -103,7 +103,7 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     }
     "XRANGE", _ -> Error(WrongNumberOfArguments)
 
-    "XREAD", args -> parse_xread(args)
+    "XREAD", args -> parse_xread(args, option.None)
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }
@@ -145,7 +145,7 @@ fn parse_config(args: List(Resp)) -> Result(Command, Error) {
   }
 }
 
-fn parse_xread(args) {
+fn parse_xread(args: List(Resp), block: Option(Int)) -> Result(Command, Error) {
   use subcommand, args <- with_command(from: args)
   case subcommand {
     "STREAMS" -> {
@@ -156,7 +156,14 @@ fn parse_xread(args) {
       use ids <- as_xread_entry_ids(ids)
       list.strict_zip(keys, ids)
       |> result.replace_error(InvalidArgument)
-      |> result.map(XRead)
+      |> result.map(XRead(_, block))
+    }
+    "BLOCK" -> {
+      use duration <- then(list.first(args), or: WrongNumberOfArguments)
+      use duration <- as_string(duration)
+      use duration <- as_int(duration)
+      use rest <- then(list.rest(args), or: WrongNumberOfArguments)
+      parse_xread(rest, option.Some(duration))
     }
     _ -> Error(InvalidSubcommand)
   }
@@ -170,12 +177,9 @@ fn with_command(
     list.first(resp)
     |> result.then(resp.to_string)
     |> result.map(string.uppercase)
-    |> result.replace_error(InvalidCommand)
 
-  let args = list.rest(resp) |> result.replace_error(InvalidCommand)
-
-  use command <- result.then(command)
-  use args <- result.then(args)
+  use command <- then(either: command, or: InvalidCommand)
+  use args <- then(either: list.rest(resp), or: InvalidCommand)
   fun(command, args)
 }
 
@@ -223,7 +227,6 @@ fn as_xread_entry_keys(
 ) -> Result(a, Error) {
   as_string(_, Ok)
   |> list.try_map(resps, _)
-  |> result.replace_error(InvalidArgument)
   |> result.then(callback)
 }
 
@@ -233,18 +236,23 @@ fn as_xread_entry_ids(
 ) -> Result(a, Error) {
   as_xrange_entry_id(_, "$", Ok)
   |> list.try_map(resps, _)
-  |> result.replace_error(InvalidArgument)
   |> result.then(callback)
 }
 
 fn as_string(resp: Resp, callback: fn(String) -> Result(a, Error)) {
-  resp.to_string(resp)
-  |> result.replace_error(InvalidArgument)
-  |> result.then(callback)
+  then(either: resp.to_string(resp), with: callback, or: InvalidArgument)
 }
 
 fn as_int(string: String, callback: fn(Int) -> Result(a, Error)) {
-  int.parse(string)
-  |> result.replace_error(InvalidArgument)
+  then(either: int.parse(string), with: callback, or: InvalidArgument)
+}
+
+fn then(
+  either result: Result(a, e),
+  or error: f,
+  with callback: fn(a) -> Result(b, f),
+) -> Result(b, f) {
+  result
+  |> result.replace_error(error)
   |> result.then(callback)
 }
