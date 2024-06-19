@@ -247,7 +247,7 @@ fn not_larger_than_end(entry: Entry, end: StreamEntryId) -> Bool {
     command.Unspecified -> True
     command.Timestamp(end_timestamp) -> timestamp <= end_timestamp
     command.Explicit(end_timestamp, end_sequence) ->
-      timestamp <= end_timestamp
+      timestamp < end_timestamp
       || { timestamp == end_timestamp && sequence <= end_sequence }
   }
 }
