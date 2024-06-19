@@ -4,6 +4,8 @@ import gleam/bool
 import gleam/erlang
 import gleam/erlang/process.{type Subject}
 import gleam/int
+import gleam/iterator.{type Iterator}
+import gleam/list
 import gleam/order.{Eq, Gt, Lt}
 import gleam/otp/actor
 import gleam/result
@@ -63,12 +65,19 @@ pub fn handle_xadd(
       add(Entry(#(timestamp, sequence), data), stream)
     }
   }
-  |> result.map(fn(entries) {
-    let #(timestamp, sequence) = entries
-    resp.stream_entry_id(timestamp, sequence)
-  })
+  |> result.map(id_resp)
   |> result.map_error(resp.SimpleError)
   |> result.unwrap_both
+}
+
+pub fn handle_xrange(
+  stream: Stream,
+  start: StreamEntryId,
+  end: StreamEntryId,
+) -> Resp {
+  range(stream, start, end)
+  |> list.map(to_resp)
+  |> resp.Array
 }
 
 fn validate_entry_id(
@@ -92,11 +101,31 @@ fn validate_entry_id(
   )
 }
 
-fn last_id(stream: Stream) -> #(Int, Int) {
+fn last_id(stream: Stream) -> Id {
   case last(stream) {
     Ok(Entry(id, _)) -> id
     Error(_) -> #(0, 0)
   }
+}
+
+fn to_resp(entry: Entry) -> Resp {
+  let Entry(_, data) = entry
+  let id_resp = id_string(entry) |> resp.BulkString
+  let data_resp =
+    list.flat_map(data, fn(kv) { [kv.0, kv.1] })
+    |> list.map(resp.BulkString)
+    |> resp.Array
+  resp.Array([id_resp, data_resp])
+}
+
+fn id_string(entry: Entry) -> String {
+  let Entry(#(timestamp, sequence), _) = entry
+  int.to_string(timestamp) <> "-" <> int.to_string(sequence)
+}
+
+fn id_resp(id: Id) -> Resp {
+  let #(timestamp, sequence) = id
+  resp.BulkString(int.to_string(timestamp) <> "-" <> int.to_string(sequence))
 }
 
 // Stream actor
@@ -104,6 +133,7 @@ fn last_id(stream: Stream) -> #(Int, Int) {
 pub opaque type Message {
   Add(entry: Entry, expect: Subject(Result(Id, String)))
   Last(expect: Subject(Result(Entry, Nil)))
+  Range(start: StreamEntryId, end: StreamEntryId, expect: Subject(List(Entry)))
 }
 
 fn add(entry: Entry, stream: Stream) -> Result(Id, String) {
@@ -114,6 +144,15 @@ fn add(entry: Entry, stream: Stream) -> Result(Id, String) {
 fn last(stream: Stream) -> Result(Entry, Nil) {
   use sender <- actor.call(stream, _, 500)
   Last(sender)
+}
+
+fn range(
+  stream: Stream,
+  start: StreamEntryId,
+  end: StreamEntryId,
+) -> List(Entry) {
+  use sender <- actor.call(stream, _, 500)
+  Range(start, end, sender)
 }
 
 pub fn new(key: String) -> Result(Stream, String) {
@@ -159,16 +198,56 @@ fn loop(
       |> result.map(from_stored)
       |> actor.send(sender, _)
     }
+
+    Range(start, end, sender) -> {
+      keys(stream_data)
+      |> iterator.filter_map(oset.lookup(stream_data, _))
+      |> iterator.map(from_stored)
+      |> iterator.drop_while(smaller_than_start(_, start))
+      |> iterator.take_while(not_larger_than_end(_, end))
+      |> iterator.to_list
+      |> actor.send(sender, _)
+    }
   }
 
   actor.continue(stream_data)
 }
 
 fn to_stored(entry: Entry) -> #(String, Entry) {
-  let Entry(#(timestamp, sequence), _) = entry
-  #(int.to_string(timestamp) <> "-" <> int.to_string(sequence), entry)
+  #(id_string(entry), entry)
 }
 
-fn from_stored(stored: #(String, Entry)) {
+fn from_stored(stored: #(String, Entry)) -> Entry {
   stored.1
+}
+
+fn keys(table: StreamDataset) -> Iterator(String) {
+  use key <- iterator.unfold(from: oset.first(table))
+
+  case key {
+    Error(Nil) -> iterator.Done
+    Ok(key) -> iterator.Next(key, oset.next(table, key))
+  }
+}
+
+fn smaller_than_start(entry: Entry, start: StreamEntryId) -> Bool {
+  let Entry(#(timestamp, sequence), _) = entry
+  case start {
+    command.Unspecified -> False
+    command.Timestamp(start_timestamp) -> timestamp < start_timestamp
+    command.Explicit(start_timestamp, start_sequence) ->
+      timestamp < start_timestamp
+      || { timestamp == start_timestamp && sequence < start_sequence }
+  }
+}
+
+fn not_larger_than_end(entry: Entry, end: StreamEntryId) -> Bool {
+  let Entry(#(timestamp, sequence), _) = entry
+  case end {
+    command.Unspecified -> True
+    command.Timestamp(end_timestamp) -> timestamp <= end_timestamp
+    command.Explicit(end_timestamp, end_sequence) ->
+      timestamp <= end_timestamp
+      || { timestamp == end_timestamp && sequence <= end_sequence }
+  }
 }

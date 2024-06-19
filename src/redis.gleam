@@ -115,7 +115,12 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             |> result.map_error(resp.SimpleError)
             |> result.unwrap_both
 
-          command.XRange(stream, start, end) -> todo
+          command.XRange(stream_key, start, end) ->
+            case store.lookup(table, stream_key) {
+              value.None -> resp.Null(resp.NullArray)
+              value.Stream(stream) -> stream.handle_xrange(stream, start, end)
+              _ -> resp.SimpleError("ERR " <> stream_key <> " is not a stream")
+            }
         }
         |> send_resp(conn)
       actor.continue(Nil)
