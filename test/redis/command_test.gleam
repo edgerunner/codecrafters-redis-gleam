@@ -220,6 +220,30 @@ pub fn parse_xrange_plus_end_test() {
   ))
 }
 
+pub fn parse_xread_one_stream_test() {
+  "XREAD STREAMS fruits 1526985054069-0"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(
+    command.XRead(streams: [#("fruits", command.Explicit(1_526_985_054_069, 0))]),
+  )
+}
+
+pub fn parse_xread_three_streams_test() {
+  "XREAD STREAMS fruits shoes clock 1526985054069-0 1526986857397 $"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(
+    command.XRead(streams: [
+      #("fruits", command.Explicit(1_526_985_054_069, 0)),
+      #("shoes", command.Timestamp(1_526_986_857_397)),
+      #("clock", command.Unspecified),
+    ]),
+  )
+}
+
 fn command_resp(str: String) -> resp.Resp {
   string.split(str, on: " ")
   |> list.map(resp.BulkString)

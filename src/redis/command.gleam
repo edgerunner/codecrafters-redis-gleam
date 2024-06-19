@@ -16,6 +16,7 @@ pub type Command {
   Type(String)
   XAdd(stream: String, id: StreamEntryId, data: List(#(String, String)))
   XRange(stream: String, start: StreamEntryId, end: StreamEntryId)
+  XRead(streams: List(#(String, StreamEntryId)))
 }
 
 pub type ConfigSubcommand {
@@ -102,6 +103,8 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     }
     "XRANGE", _ -> Error(WrongNumberOfArguments)
 
+    "XREAD", args -> parse_xread(args)
+
     unknown, _ -> Error(UnknownCommand(unknown))
   }
 }
@@ -139,6 +142,23 @@ fn parse_config(args: List(Resp)) -> Result(Command, Error) {
       }
     "GET", _ -> Error(InvalidArgument)
     unknown, _ -> Error(UnknownCommand(unknown))
+  }
+}
+
+fn parse_xread(args) {
+  use subcommand, args <- with_command(from: args)
+  case subcommand {
+    "STREAMS" -> {
+      let #(keys, ids) =
+        list.length(args) / 2
+        |> list.split(args, _)
+      use keys <- as_xread_entry_keys(keys)
+      use ids <- as_xread_entry_ids(ids)
+      list.strict_zip(keys, ids)
+      |> result.replace_error(InvalidArgument)
+      |> result.map(XRead)
+    }
+    _ -> Error(InvalidSubcommand)
   }
 }
 
@@ -181,7 +201,7 @@ fn as_xrange_entry_id(
   resp: Resp,
   wildcard: String,
   callback: fn(StreamEntryId) -> Result(a, Error),
-) {
+) -> Result(a, Error) {
   use id_string <- as_string(resp)
   case id_string, string.split_once(id_string, on: "-") {
     w, _ if w == wildcard -> Unspecified |> callback
@@ -195,6 +215,26 @@ fn as_xrange_entry_id(
       Explicit(timestamp, sequence) |> callback
     }
   }
+}
+
+fn as_xread_entry_keys(
+  resps: List(Resp),
+  callback: fn(List(String)) -> Result(a, Error),
+) -> Result(a, Error) {
+  as_string(_, Ok)
+  |> list.try_map(resps, _)
+  |> result.replace_error(InvalidArgument)
+  |> result.then(callback)
+}
+
+fn as_xread_entry_ids(
+  resps: List(Resp),
+  callback: fn(List(StreamEntryId)) -> Result(a, Error),
+) -> Result(a, Error) {
+  as_xrange_entry_id(_, "$", Ok)
+  |> list.try_map(resps, _)
+  |> result.replace_error(InvalidArgument)
+  |> result.then(callback)
 }
 
 fn as_string(resp: Resp, callback: fn(String) -> Result(a, Error)) {

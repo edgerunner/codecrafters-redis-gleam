@@ -121,6 +121,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
               value.Stream(stream) -> stream.handle_xrange(stream, start, end)
               _ -> resp.SimpleError("ERR " <> stream_key <> " is not a stream")
             }
+
+          command.XRead(_) -> todo
         }
         |> send_resp(conn)
       actor.continue(Nil)
