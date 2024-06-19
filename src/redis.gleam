@@ -122,7 +122,22 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
               _ -> resp.SimpleError("ERR " <> stream_key <> " is not a stream")
             }
 
-          command.XRead(_) -> todo
+          command.XRead(streams) ->
+            {
+              use #(stream_key, from) <- list.map(streams)
+              case store.lookup(table, stream_key) {
+                value.None -> resp.Null(resp.NullArray)
+                value.Stream(stream) ->
+                  [
+                    resp.BulkString(stream_key),
+                    stream.handle_xread(stream, from),
+                  ]
+                  |> resp.Array
+                _ ->
+                  resp.SimpleError("ERR " <> stream_key <> " is not a stream")
+              }
+            }
+            |> resp.Array
         }
         |> send_resp(conn)
       actor.continue(Nil)

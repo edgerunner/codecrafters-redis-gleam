@@ -1,11 +1,12 @@
+import gleam/erlang/process
 import gleeunit/should
 import redis/command.{Explicit}
 import redis/resp.{Array, BulkString}
 import redis/stream
 
 pub fn xrange_explicit_middle_test() {
-  dummy_stream()
-  |> stream.handle_xrange(Explicit(2, 0), Explicit(3, 0))
+  let stream = dummy_stream("xrange_explicit_middle")
+  stream.handle_xrange(stream, Explicit(2, 0), Explicit(3, 0))
   |> should.equal(
     Array([
       Array([BulkString("2-0"), Array([BulkString("two"), BulkString("iki")])]),
@@ -26,8 +27,25 @@ pub fn xrange_explicit_middle_test() {
   )
 }
 
-fn dummy_stream() {
-  let stream = stream.new("dummy") |> should.be_ok
+pub fn xread_explicit_test() {
+  let stream = dummy_stream("xread_explicit")
+  stream.handle_xread(stream, Explicit(2, 1))
+  |> should.equal(
+    Array([
+      Array([
+        BulkString("3-0"),
+        Array([BulkString("three"), BulkString("üç")]),
+      ]),
+      Array([
+        BulkString("4-0"),
+        Array([BulkString("four"), BulkString("dört")]),
+      ]),
+    ]),
+  )
+}
+
+fn dummy_stream(name: String) {
+  let stream = stream.new(name) |> should.be_ok
   stream.handle_xadd(stream, Explicit(1, 0), [#("one", "bir")])
   stream.handle_xadd(stream, Explicit(2, 0), [#("two", "iki")])
   stream.handle_xadd(stream, Explicit(2, 1), [

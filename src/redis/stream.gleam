@@ -80,6 +80,12 @@ pub fn handle_xrange(
   |> resp.Array
 }
 
+pub fn handle_xread(stream: Stream, from: StreamEntryId) -> Resp {
+  read(stream, from)
+  |> list.map(to_resp)
+  |> resp.Array
+}
+
 fn validate_entry_id(
   last_ts last_ts: Int,
   last_seq last_seq: Int,
@@ -134,6 +140,7 @@ pub opaque type Message {
   Add(entry: Entry, expect: Subject(Result(Id, String)))
   Last(expect: Subject(Result(Entry, Nil)))
   Range(start: StreamEntryId, end: StreamEntryId, expect: Subject(List(Entry)))
+  Read(from: StreamEntryId, expect: Subject(List(Entry)))
 }
 
 fn add(entry: Entry, stream: Stream) -> Result(Id, String) {
@@ -153,6 +160,11 @@ fn range(
 ) -> List(Entry) {
   use sender <- actor.call(stream, _, 500)
   Range(start, end, sender)
+}
+
+fn read(stream: Stream, from: StreamEntryId) -> List(Entry) {
+  use sender <- actor.call(stream, _, 500)
+  Read(from, sender)
 }
 
 pub fn new(key: String) -> Result(Stream, String) {
@@ -203,8 +215,17 @@ fn loop(
       keys(stream_data)
       |> iterator.filter_map(oset.lookup(stream_data, _))
       |> iterator.map(from_stored)
-      |> iterator.drop_while(smaller_than_start(_, start))
-      |> iterator.take_while(not_larger_than_end(_, end))
+      |> iterator.drop_while(smaller_than_id(_, start))
+      |> iterator.take_while(not_larger_than_id(_, end))
+      |> iterator.to_list
+      |> actor.send(sender, _)
+    }
+
+    Read(from, sender) -> {
+      keys(stream_data)
+      |> iterator.filter_map(oset.lookup(stream_data, _))
+      |> iterator.map(from_stored)
+      |> iterator.drop_while(not_larger_than_id(_, from))
       |> iterator.to_list
       |> actor.send(sender, _)
     }
@@ -230,24 +251,24 @@ fn keys(table: StreamDataset) -> Iterator(String) {
   }
 }
 
-fn smaller_than_start(entry: Entry, start: StreamEntryId) -> Bool {
+fn smaller_than_id(entry: Entry, id: StreamEntryId) -> Bool {
   let Entry(#(timestamp, sequence), _) = entry
-  case start {
+  case id {
     command.Unspecified -> False
-    command.Timestamp(start_timestamp) -> timestamp < start_timestamp
-    command.Explicit(start_timestamp, start_sequence) ->
-      timestamp < start_timestamp
-      || { timestamp == start_timestamp && sequence < start_sequence }
+    command.Timestamp(id_timestamp) -> timestamp < id_timestamp
+    command.Explicit(id_timestamp, id_sequence) ->
+      timestamp < id_timestamp
+      || { timestamp == id_timestamp && sequence < id_sequence }
   }
 }
 
-fn not_larger_than_end(entry: Entry, end: StreamEntryId) -> Bool {
+fn not_larger_than_id(entry: Entry, id: StreamEntryId) -> Bool {
   let Entry(#(timestamp, sequence), _) = entry
-  case end {
+  case id {
     command.Unspecified -> True
-    command.Timestamp(end_timestamp) -> timestamp <= end_timestamp
-    command.Explicit(end_timestamp, end_sequence) ->
-      timestamp < end_timestamp
-      || { timestamp == end_timestamp && sequence <= end_sequence }
+    command.Timestamp(id_timestamp) -> timestamp <= id_timestamp
+    command.Explicit(id_timestamp, id_sequence) ->
+      timestamp < id_timestamp
+      || { timestamp == id_timestamp && sequence <= id_sequence }
   }
 }
