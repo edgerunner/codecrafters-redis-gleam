@@ -1,3 +1,5 @@
+import gleam/erlang/process
+import gleam/otp/task
 import gleeunit/should
 import redis/command.{Explicit}
 import redis/resp.{Array, BulkString}
@@ -41,6 +43,50 @@ pub fn xread_explicit_test() {
       ]),
     ]),
   )
+}
+
+pub fn xread_block_before_last_test() {
+  let stream = dummy_stream("xread_block_before_last")
+
+  stream.handle_xread_block(stream, Explicit(3, 0), 1000)
+  |> should.equal(
+    Array([
+      Array([
+        BulkString("4-0"),
+        Array([BulkString("four"), BulkString("dört")]),
+      ]),
+    ]),
+  )
+}
+
+pub fn xread_block_test() {
+  let stream = dummy_stream("xread_block")
+
+  fn() {
+    process.sleep(200)
+    stream.handle_xadd(stream, Explicit(5, 0), [#("five", "beş")])
+  }
+  |> task.async
+
+  stream.handle_xread_block(stream, Explicit(4, 0), 1000)
+  |> should.equal(
+    Array([
+      Array([BulkString("5-0"), Array([BulkString("five"), BulkString("beş")])]),
+    ]),
+  )
+}
+
+pub fn xread_block_timeout_test() {
+  let stream = dummy_stream("xread_block_timeout")
+
+  fn() {
+    process.sleep(200)
+    stream.handle_xadd(stream, Explicit(5, 0), [#("five", "beş")])
+  }
+  |> task.async
+
+  stream.handle_xread_block(stream, Explicit(4, 0), 100)
+  |> should.equal(resp.Null(resp.NullString))
 }
 
 fn dummy_stream(name: String) {

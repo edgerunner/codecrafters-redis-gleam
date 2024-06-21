@@ -122,7 +122,7 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
               _ -> resp.SimpleError("ERR " <> stream_key <> " is not a stream")
             }
 
-          command.XRead(streams, _block) ->
+          command.XRead(streams, block) ->
             {
               use #(stream_key, from) <- list.map(streams)
               case store.lookup(table, stream_key) {
@@ -130,7 +130,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
                 value.Stream(stream) ->
                   [
                     resp.BulkString(stream_key),
-                    stream.handle_xread(stream, from),
+                    option.map(block, stream.handle_xread_block(stream, from, _))
+                      |> option.unwrap(stream.handle_xread(stream, from)),
                   ]
                   |> resp.Array
                 _ ->
