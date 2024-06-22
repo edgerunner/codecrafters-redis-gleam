@@ -185,7 +185,18 @@ fn read(stream: Stream, from: StreamEntryId) -> List(Entry) {
 }
 
 fn listen(stream: Stream, timeout: Int) -> Result(Entry, Nil) {
-  process.try_call(stream, Listen, timeout) |> result.nil_error
+  case timeout {
+    0 -> {
+      let subject: Subject(Entry) = process.new_subject()
+      let selector =
+        process.new_selector()
+        |> process.selecting(subject, mapping: Ok)
+      process.send(stream, Listen(subject))
+      process.select_forever(selector)
+    }
+    _ -> process.try_call(stream, Listen, timeout)
+  }
+  |> result.nil_error
 }
 
 pub fn new(key: String) -> Result(Stream, String) {

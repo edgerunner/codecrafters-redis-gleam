@@ -89,6 +89,23 @@ pub fn xread_block_timeout_test() {
   |> should.equal(resp.Null(resp.NullString))
 }
 
+pub fn xread_block_no_timeout_test() {
+  let stream = dummy_stream("xread_block_no_timeout")
+
+  fn() {
+    process.sleep(200)
+    stream.handle_xadd(stream, Explicit(5, 0), [#("five", "beş")])
+  }
+  |> task.async
+
+  stream.handle_xread_block(stream, Explicit(4, 0), 0)
+  |> should.equal(
+    Array([
+      Array([BulkString("5-0"), Array([BulkString("five"), BulkString("beş")])]),
+    ]),
+  )
+}
+
 fn dummy_stream(name: String) {
   let stream = stream.new(name) |> should.be_ok
   stream.handle_xadd(stream, Explicit(1, 0), [#("one", "bir")])
