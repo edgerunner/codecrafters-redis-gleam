@@ -10,6 +10,7 @@ import glisten.{type Connection, type Message, Packet, User}
 import redis/command
 import redis/config.{type Config}
 import redis/info
+import redis/replication.{type Replication}
 import redis/resp.{type Resp}
 import redis/store.{type Table}
 import redis/stream
@@ -23,15 +24,22 @@ pub fn main() {
     |> option.unwrap(store.new())
 
   let assert Ok(_) =
-    glisten.handler(fn(_) { #(Nil, None) }, fn(msg, _state, conn) {
-      router(msg, table, config, conn)
-    })
+    glisten.handler(
+      fn(_) { #(replication.master(), None) },
+      fn(msg, state, conn) { router(msg, state, table, config, conn) },
+    )
     |> glisten.serve(config.port)
 
   process.sleep_forever()
 }
 
-fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
+fn router(
+  msg: Message(a),
+  state: Replication,
+  table: Table,
+  config: Config,
+  conn: Connection(a),
+) {
   case msg {
     Packet(resp_binary) -> {
       let assert Ok(#(resp, _)) = resp_binary |> resp.parse
@@ -139,12 +147,12 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             |> resp.Array
 
           command.Info(command.InfoReplication) ->
-            info.handle_replication(config.replicaof)
+            info.handle_replication(config.replicaof, state)
         }
         |> send_resp(conn)
-      actor.continue(Nil)
+      actor.continue(state)
     }
-    User(_) -> actor.continue(Nil)
+    User(_) -> actor.continue(state)
   }
 }
 

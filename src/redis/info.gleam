@@ -1,10 +1,19 @@
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import redis/replication.{type Replication}
 import redis/resp.{type Resp}
 
-pub fn handle_replication(replicaof: Option(#(String, Int))) -> Resp {
-  [#("role", to_role(replicaof))]
+pub fn handle_replication(
+  replicaof: Option(#(String, Int)),
+  state: Replication,
+) -> Resp {
+  [
+    #("role", to_role(replicaof)),
+    #("master_replid", state.master_replid),
+    #("master_repl_offset", state.master_repl_offset |> int.to_string),
+  ]
   |> to_resp
 }
 
