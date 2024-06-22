@@ -35,33 +35,36 @@ pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   let assert Ok(socket) = mug.connect(options)
 
   io.print("PING …")
-  let assert Ok(_) = send_command(socket, ["PING"])
-  let assert Ok(response) = mug.receive(socket, 10_000)
-  let assert Ok(#(resp.SimpleString("PONG"), _)) = resp.parse(response)
+  let assert "PONG" = send_command(socket, ["PING"])
   io.println(" PONG")
 
   let replconf1 = ["REPLCONF", "listening-port", int.to_string(listening_port)]
   io.print(string.join(replconf1, " ") <> " …")
-  let assert Ok(_) = send_command(socket, replconf1)
-  let assert Ok(response) = mug.receive(socket, 10_000)
-  let assert Ok(#(resp.SimpleString("OK"), _)) = resp.parse(response)
+  let assert "OK" = send_command(socket, replconf1)
   io.println(" OK")
 
   let replconf2 = ["REPLCONF", "capa", "psync2"]
   io.print(string.join(replconf2, " ") <> " …")
-  let assert Ok(_) = send_command(socket, replconf2)
-  let assert Ok(response) = mug.receive(socket, 10_000)
-  let assert Ok(#(resp.SimpleString("OK"), _)) = resp.parse(response)
+  let assert "OK" = send_command(socket, replconf2)
   io.println(" OK")
+
+  let psync = ["PSYNC", "?", "-1"]
+  io.print("PSYNC …")
+  let psync = send_command(socket, psync)
+  io.println(psync)
 
   Slave(master_replid: "", master_repl_offset: -1)
 }
 
 fn send_command(socket: mug.Socket, parts: List(String)) {
-  list.map(parts, resp.BulkString)
-  |> resp.Array
-  |> resp.encode
-  |> mug.send(socket, _)
+  let assert Ok(_) =
+    list.map(parts, resp.BulkString)
+    |> resp.Array
+    |> resp.encode
+    |> mug.send(socket, _)
+  let assert Ok(response) = mug.receive(socket, 10_000)
+  let assert Ok(#(resp.SimpleString(payload), _)) = resp.parse(response)
+  payload
 }
 
 import gleam/io
