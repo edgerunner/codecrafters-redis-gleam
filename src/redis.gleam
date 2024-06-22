@@ -25,7 +25,8 @@ pub fn main() {
 
   let replication = case config.replicaof {
     None -> replication.master()
-    Some(#(master, port)) -> replication.slave(to: master, on: port)
+    Some(#(master, port)) ->
+      replication.slave(to: master, on: port, from: config.port)
   }
 
   let assert Ok(_) =

@@ -25,25 +25,36 @@ fn random_replid() -> String {
   |> string.from_utf_codepoints
 }
 
+import gleam/list
 import mug
 import redis/resp
 
-pub fn slave(to host: String, on port: Int) {
+pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   io.println("Connecting to master: " <> host)
   let options = mug.new(host, port)
   let assert Ok(socket) = mug.connect(options)
 
   io.print("PING …")
-  let assert Ok(_) = ping() |> resp.encode |> mug.send(socket, _)
+  let assert Ok(_) = send_command(socket, ["PING"])
   let assert Ok(response) = mug.receive(socket, 10_000)
   let assert Ok(#(resp.SimpleString("PONG"), _)) = resp.parse(response)
   io.println(" PONG")
 
+  let replconf1 = ["REPLCONF", "listening-port", int.to_string(listening_port)]
+  io.print(string.join(replconf1, " ") <> " …")
+  let assert Ok(_) = send_command(socket, replconf1)
+  let assert Ok(response) = mug.receive(socket, 10_000)
+  let assert Ok(#(resp.SimpleString("OK"), _)) = resp.parse(response)
+  io.println(" OK")
+
   Slave(master_replid: "", master_repl_offset: -1)
 }
 
-fn ping() {
-  [resp.BulkString("PING")] |> resp.Array
+fn send_command(socket: mug.Socket, parts: List(String)) {
+  list.map(parts, resp.BulkString)
+  |> resp.Array
+  |> resp.encode
+  |> mug.send(socket, _)
 }
 
 import gleam/io
