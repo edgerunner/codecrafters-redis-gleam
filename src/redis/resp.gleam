@@ -1,6 +1,7 @@
 pub type Resp {
   SimpleString(String)
   BulkString(String)
+  BulkData(BitArray)
   Array(List(Resp))
   Null(NullType)
   SimpleError(String)
@@ -74,11 +75,14 @@ fn parse_simple(input: BitArray) -> Parse(String) {
 fn parse_bulk_string(input: BitArray) -> Parse(Resp) {
   use #(length, rest) <- result.then(parse_length(input, 0))
   use #(bulk, rest) <- result.then(parse_slice(rest, length))
-  use #(Nil, rest) <- result.then(parse_crlf(rest))
-  bit_array.to_string(bulk)
-  |> result.replace_error(InvalidUTF8)
-  |> result.map(BulkString)
-  |> result.map(pair.new(_, rest))
+
+  case bit_array.to_string(bulk) {
+    Ok(string) -> {
+      use #(Nil, rest) <- result.map(parse_crlf(rest))
+      #(BulkString(string), rest)
+    }
+    Error(Nil) -> Ok(#(BulkData(bulk), rest))
+  }
 }
 
 fn parse_length(input: BitArray, length: Int) -> Parse(Int) {
@@ -147,6 +151,7 @@ pub fn encode(resp: Resp) -> BitArray {
     SimpleString(s) -> encode_simple_string(s)
     SimpleError(e) -> encode_simple_error(e)
     BulkString(s) -> encode_bulk_string(s)
+    BulkData(b) -> encode_bulk_data(b)
     Array(a) -> encode_array(a)
   }
 }
@@ -172,6 +177,11 @@ fn encode_bulk_string(string: String) -> BitArray {
   <<"$":utf8, length:bits, string:utf8, crlf:bits>>
 }
 
+fn encode_bulk_data(bits: BitArray) -> BitArray {
+  let length = encode_length(bit_array.byte_size(bits))
+  <<"$":utf8, length:bits, bits:bits>>
+}
+
 fn encode_length(length: Int) -> BitArray {
   <<int.to_string(length):utf8, crlf:bits>>
 }
@@ -193,7 +203,7 @@ pub fn to_string(resp: Resp) -> Result(String, Nil) {
 
 pub fn to_list(resp: Resp) -> List(Resp) {
   case resp {
-    SimpleString(_) | BulkString(_) | SimpleError(_) -> [resp]
+    SimpleString(_) | BulkString(_) | SimpleError(_) | BulkData(_) -> [resp]
     Array(list) -> list
     Null(_) -> []
   }

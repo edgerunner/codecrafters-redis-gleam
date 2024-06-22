@@ -48,6 +48,14 @@ pub fn parse_bulk_string_echo_test() {
   |> should.equal(resp.BulkString("ECHO"))
 }
 
+pub fn parse_bulk_data_test() {
+  <<"$4\r\n":utf8, 0xff, 0x01, 0x02, 0x03>>
+  |> resp.parse
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.BulkData(<<0xff, 0x01, 0x02, 0x03>>))
+}
+
 pub fn fail_parse_bulk_string_without_terminator_test() {
   <<"$4\r\nECHO":utf8>>
   |> resp.parse
@@ -137,6 +145,12 @@ pub fn encode_bulk_string_echo_test() {
   resp.BulkString("ECHO")
   |> resp.encode
   |> should.equal(<<"$4\r\nECHO\r\n":utf8>>)
+}
+
+pub fn encode_bulk_data_test() {
+  resp.BulkData(<<0xff, 0x01, 0x02, 0x03>>)
+  |> resp.encode
+  |> should.equal(<<"$4\r\n":utf8, 0xff, 0x01, 0x02, 0x03>>)
 }
 
 pub fn encode_empty_array_test() {
