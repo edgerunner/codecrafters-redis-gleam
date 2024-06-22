@@ -144,6 +144,8 @@ fn parse_config(args: List(Resp)) -> Result(Command, Error) {
       case key {
         "dir" -> Ok(Config(ConfigGet(config.Dir)))
         "dbfilename" -> Ok(Config(ConfigGet(config.DbFilename)))
+        "replicaof" -> Ok(Config(ConfigGet(config.ReplicaOf)))
+        "port" -> Ok(Config(ConfigGet(config.Port)))
         _ -> Error(InvalidArgument)
       }
     "GET", _ -> Error(InvalidArgument)

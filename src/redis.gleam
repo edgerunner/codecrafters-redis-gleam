@@ -64,10 +64,7 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
           command.Config(subcommand) -> {
             case subcommand {
               command.ConfigGet(parameter) -> {
-                case parameter {
-                  config.Dir -> config.dir
-                  config.DbFilename -> config.dbfilename
-                }
+                config.to_string(config, parameter)
                 |> option.map(resp.BulkString)
                 |> option.unwrap(resp.Null(resp.NullString))
                 |> list.wrap
