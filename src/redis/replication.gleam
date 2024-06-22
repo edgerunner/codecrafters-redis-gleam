@@ -47,6 +47,13 @@ pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   let assert Ok(#(resp.SimpleString("OK"), _)) = resp.parse(response)
   io.println(" OK")
 
+  let replconf2 = ["REPLCONF", "capa", "psync2"]
+  io.print(string.join(replconf2, " ") <> " …")
+  let assert Ok(_) = send_command(socket, replconf2)
+  let assert Ok(response) = mug.receive(socket, 10_000)
+  let assert Ok(#(resp.SimpleString("OK"), _)) = resp.parse(response)
+  io.println(" OK")
+
   Slave(master_replid: "", master_repl_offset: -1)
 }
 
