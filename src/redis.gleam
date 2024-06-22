@@ -155,6 +155,10 @@ fn router(
             info.handle_replication(config.replicaof, replication)
 
           command.ReplConf(_) -> resp.SimpleString("OK")
+
+          command.PSync(id, offset) -> {
+            replication.handle_psync(replication, id, offset)
+          }
         }
         |> send_resp(conn)
       actor.continue(Nil)

@@ -1,6 +1,6 @@
 import gleam/int
 import gleam/list
-import gleam/option.{type Option}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set.{type Set}
 import gleam/string
@@ -20,6 +20,7 @@ pub type Command {
   XRead(streams: List(#(String, StreamEntryId)), block: Option(Int))
   Info(InfoSubcommand)
   ReplConf(ReplConfSubcommand)
+  PSync(id: Option(String), offset: Int)
 }
 
 pub type ConfigSubcommand {
@@ -120,6 +121,8 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
 
     "REPLCONF", args -> parse_replconf(args, set.new())
 
+    "PSYNC", args -> parse_psync(args)
+
     unknown, _ -> Error(UnknownCommand(unknown))
   }
 }
@@ -194,7 +197,10 @@ fn parse_xread(args: List(Resp), block: Option(Int)) -> Result(Command, Error) {
   }
 }
 
-fn parse_replconf(args: List(Resp), capas: Set(String)) {
+fn parse_replconf(
+  args: List(Resp),
+  capas: Set(String),
+) -> Result(Command, Error) {
   use subcommand, args <- with_command(from: args)
   case subcommand, args {
     "LISTENING-PORT", [BulkString(port)] -> {
@@ -210,6 +216,20 @@ fn parse_replconf(args: List(Resp), capas: Set(String)) {
       set.insert(capas, capa)
       |> parse_replconf(rest, _)
     _, _ -> Error(InvalidSubcommand)
+  }
+}
+
+fn parse_psync(args: List(Resp)) -> Result(Command, Error) {
+  case args {
+    [BulkString("?"), BulkString(offset)] ->
+      int.parse(offset)
+      |> result.map(PSync(None, _))
+      |> result.replace_error(InvalidArgument)
+    [BulkString(id), BulkString(offset)] ->
+      int.parse(offset)
+      |> result.map(PSync(Some(id), _))
+      |> result.replace_error(InvalidArgument)
+    _ -> Error(InvalidArgument)
   }
 }
 

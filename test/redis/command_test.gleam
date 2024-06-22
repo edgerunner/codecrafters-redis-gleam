@@ -1,4 +1,4 @@
-import gleam/option
+import gleam/option.{None, Some}
 import gleam/set
 import gleeunit/should
 import redis/command
@@ -199,6 +199,19 @@ pub fn parse_replconf_capa_test() {
   |> should_parse_into(
     command.ReplConf(command.ReplConfCapa(set.from_list(["eof", "psync2"]))),
   )
+}
+
+pub fn parse_initial_psync_test() {
+  "PSYNC ? -1"
+  |> should_parse_into(command.PSync(id: None, offset: -1))
+}
+
+pub fn parse_subsequent_psync_test() {
+  "PSYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 5"
+  |> should_parse_into(command.PSync(
+    id: Some("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"),
+    offset: 5,
+  ))
 }
 
 fn should_parse_into(input: String, expected: command.Command) {

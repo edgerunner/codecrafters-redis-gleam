@@ -25,6 +25,7 @@ fn random_replid() -> String {
   |> string.from_utf_codepoints
 }
 
+import gleam/io
 import gleam/list
 import mug
 import redis/resp
@@ -67,4 +68,20 @@ fn send_command(socket: mug.Socket, parts: List(String)) {
   payload
 }
 
-import gleam/io
+import gleam/option.{type Option, None}
+
+pub fn handle_psync(
+  replication: Replication,
+  id: Option(String),
+  offset: Int,
+) -> resp.Resp {
+  case replication, id, offset {
+    Master(master_repl_id, master_repl_offset), None, -1 -> {
+      ["FULLRESYNC", master_repl_id, int.to_string(master_repl_offset)]
+      |> string.join(" ")
+      |> resp.SimpleString
+    }
+    Master(_, _), _, _ -> todo
+    Slave(_, _), _, _ -> resp.SimpleError("ERR This instance is a slave")
+  }
+}
