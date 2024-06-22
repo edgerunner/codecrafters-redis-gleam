@@ -1,9 +1,11 @@
 import argv
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/result
 
 pub type Config {
-  Config(dir: Option(String), dbfilename: Option(String))
+  Config(dir: Option(String), dbfilename: Option(String), port: Int)
 }
 
 pub type Parameter {
@@ -11,7 +13,7 @@ pub type Parameter {
   DbFilename
 }
 
-pub const default = Config(dir: None, dbfilename: None)
+pub const default = Config(dir: None, dbfilename: None, port: 6379)
 
 pub fn load() -> Config {
   let args = list.window_by_2(argv.load().arguments)
@@ -19,6 +21,8 @@ pub fn load() -> Config {
   case left, right {
     "--dir", dir -> Config(..config, dir: Some(dir))
     "--dbfilename", dbfilename -> Config(..config, dbfilename: Some(dbfilename))
+    "--port", port ->
+      Config(..config, port: port |> int.parse |> result.unwrap(config.port))
     _, _ -> config
   }
 }

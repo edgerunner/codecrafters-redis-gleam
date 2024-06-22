@@ -25,7 +25,7 @@ pub fn main() {
     glisten.handler(fn(_) { #(Nil, None) }, fn(msg, _state, conn) {
       router(msg, table, config, conn)
     })
-    |> glisten.serve(6379)
+    |> glisten.serve(config.port)
 
   process.sleep_forever()
 }
