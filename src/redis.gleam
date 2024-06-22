@@ -153,6 +153,8 @@ fn router(
 
           command.Info(command.InfoReplication) ->
             info.handle_replication(config.replicaof, replication)
+
+          command.ReplConf(_) -> resp.SimpleString("OK")
         }
         |> send_resp(conn)
       actor.continue(Nil)

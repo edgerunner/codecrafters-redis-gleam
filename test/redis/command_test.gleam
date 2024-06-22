@@ -1,4 +1,5 @@
 import gleam/option
+import gleam/set
 import gleeunit/should
 import redis/command
 import redis/config
@@ -248,6 +249,24 @@ pub fn parse_info_replication_test() {
   |> command.parse
   |> should.be_ok
   |> should.equal(command.Info(command.InfoReplication))
+}
+
+pub fn parse_replconf_listening_port_test() {
+  "REPLCONF listening-port 5432"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.ReplConf(command.ReplConfListeningPort(5432)))
+}
+
+pub fn parse_replconf_capa_test() {
+  "REPLCONF capa eof capa psync2"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(
+    command.ReplConf(command.ReplConfCapa(set.from_list(["eof", "psync2"]))),
+  )
 }
 
 // Helpers

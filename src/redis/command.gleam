@@ -2,6 +2,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option}
 import gleam/result
+import gleam/set.{type Set}
 import gleam/string
 import redis/config
 import redis/resp.{type Resp, Array, BulkString, Null, SimpleString}
@@ -18,6 +19,7 @@ pub type Command {
   XRange(stream: String, start: StreamEntryId, end: StreamEntryId)
   XRead(streams: List(#(String, StreamEntryId)), block: Option(Int))
   Info(InfoSubcommand)
+  ReplConf(ReplConfSubcommand)
 }
 
 pub type ConfigSubcommand {
@@ -26,6 +28,11 @@ pub type ConfigSubcommand {
 
 pub type InfoSubcommand {
   InfoReplication
+}
+
+pub type ReplConfSubcommand {
+  ReplConfListeningPort(port: Int)
+  ReplConfCapa(capa: Set(String))
 }
 
 pub type StreamEntryId {
@@ -111,6 +118,8 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
 
     "XREAD", args -> parse_xread(args, option.None)
 
+    "REPLCONF", args -> parse_replconf(args, set.new())
+
     unknown, _ -> Error(UnknownCommand(unknown))
   }
 }
@@ -182,6 +191,25 @@ fn parse_xread(args: List(Resp), block: Option(Int)) -> Result(Command, Error) {
       parse_xread(rest, option.Some(duration))
     }
     _ -> Error(InvalidSubcommand)
+  }
+}
+
+fn parse_replconf(args: List(Resp), capas: Set(String)) {
+  use subcommand, args <- with_command(from: args)
+  case subcommand, args {
+    "LISTENING-PORT", [BulkString(port)] -> {
+      use port <- as_int(port)
+      port |> ReplConfListeningPort |> ReplConf |> Ok
+    }
+    "CAPA", [BulkString(capa)] ->
+      set.insert(capas, capa)
+      |> ReplConfCapa
+      |> ReplConf
+      |> Ok
+    "CAPA", [BulkString(capa), ..rest] ->
+      set.insert(capas, capa)
+      |> parse_replconf(rest, _)
+    _, _ -> Error(InvalidSubcommand)
   }
 }
 
