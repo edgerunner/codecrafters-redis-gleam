@@ -17,10 +17,15 @@ pub type Command {
   XAdd(stream: String, id: StreamEntryId, data: List(#(String, String)))
   XRange(stream: String, start: StreamEntryId, end: StreamEntryId)
   XRead(streams: List(#(String, StreamEntryId)), block: Option(Int))
+  Info(InfoSubcommand)
 }
 
 pub type ConfigSubcommand {
   ConfigGet(config.Parameter)
+}
+
+pub type InfoSubcommand {
+  InfoReplication
 }
 
 pub type StreamEntryId {
@@ -65,6 +70,7 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     "GET", _ -> Error(WrongNumberOfArguments)
 
     "CONFIG", _ -> parse_config(args)
+    "INFO", _ -> parse_info(args)
 
     "KEYS", [BulkString("*")] -> Ok(Keys(option.None))
     "KEYS", [BulkString(_)] ->
@@ -142,6 +148,14 @@ fn parse_config(args: List(Resp)) -> Result(Command, Error) {
       }
     "GET", _ -> Error(InvalidArgument)
     unknown, _ -> Error(UnknownCommand(unknown))
+  }
+}
+
+fn parse_info(args: List(Resp)) -> Result(Command, Error) {
+  use subcommand, args <- with_command(from: args)
+  case subcommand, args {
+    "REPLICATION", [] -> Ok(Info(InfoReplication))
+    _, _ -> Error(InvalidSubcommand)
   }
 }
 

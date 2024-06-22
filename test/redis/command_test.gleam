@@ -242,6 +242,14 @@ pub fn parse_xread_block_1500_test() {
   ))
 }
 
+pub fn parse_info_replication_test() {
+  "INFO replication"
+  |> command_resp
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(command.Info(command.InfoReplication))
+}
+
 // Helpers
 
 import gleam/list

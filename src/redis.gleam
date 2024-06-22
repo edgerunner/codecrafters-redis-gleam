@@ -9,6 +9,7 @@ import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
 import redis/command
 import redis/config.{type Config}
+import redis/info
 import redis/resp.{type Resp}
 import redis/store.{type Table}
 import redis/stream
@@ -139,6 +140,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
               }
             }
             |> resp.Array
+
+          command.Info(command.InfoReplication) -> info.handle_replication()
         }
         |> send_resp(conn)
       actor.continue(Nil)
