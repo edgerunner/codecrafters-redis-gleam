@@ -138,7 +138,8 @@ fn router(msg: Message(a), table: Table, config: Config, conn: Connection(a)) {
             }
             |> resp.Array
 
-          command.Info(command.InfoReplication) -> info.handle_replication()
+          command.Info(command.InfoReplication) ->
+            info.handle_replication(config.replicaof)
         }
         |> send_resp(conn)
       actor.continue(Nil)
