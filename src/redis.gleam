@@ -23,11 +23,15 @@ pub fn main() {
     |> option.map(store.load)
     |> option.unwrap(store.new())
 
+  let replication = case config.replicaof {
+    None -> replication.master()
+    Some(#(master, port)) -> replication.slave(to: master, on: port)
+  }
+
   let assert Ok(_) =
-    glisten.handler(
-      fn(_) { #(replication.master(), None) },
-      fn(msg, state, conn) { router(msg, state, table, config, conn) },
-    )
+    glisten.handler(fn(_) { #(Nil, None) }, fn(msg, _state, conn) {
+      router(msg, table, config, replication, conn)
+    })
     |> glisten.serve(config.port)
 
   process.sleep_forever()
@@ -35,9 +39,9 @@ pub fn main() {
 
 fn router(
   msg: Message(a),
-  state: Replication,
   table: Table,
   config: Config,
+  replication: Replication,
   conn: Connection(a),
 ) {
   case msg {
@@ -147,12 +151,12 @@ fn router(
             |> resp.Array
 
           command.Info(command.InfoReplication) ->
-            info.handle_replication(config.replicaof, state)
+            info.handle_replication(config.replicaof, replication)
         }
         |> send_resp(conn)
-      actor.continue(state)
+      actor.continue(Nil)
     }
-    User(_) -> actor.continue(state)
+    User(_) -> actor.continue(Nil)
   }
 }
 

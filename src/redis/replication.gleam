@@ -1,5 +1,6 @@
 pub type Replication {
   Master(master_replid: String, master_repl_offset: Int)
+  Slave(master_replid: String, master_repl_offset: Int)
 }
 
 pub fn master() -> Replication {
@@ -23,3 +24,26 @@ fn random_replid() -> String {
   |> iterator.to_list
   |> string.from_utf_codepoints
 }
+
+import mug
+import redis/resp
+
+pub fn slave(to host: String, on port: Int) {
+  io.println("Connecting to master: " <> host)
+  let options = mug.new(host, port)
+  let assert Ok(socket) = mug.connect(options)
+
+  io.print("PING …")
+  let assert Ok(_) = ping() |> resp.encode |> mug.send(socket, _)
+  let assert Ok(response) = mug.receive(socket, 10_000)
+  let assert Ok(#(resp.SimpleString("PONG"), _)) = resp.parse(response)
+  io.println(" PONG")
+
+  Slave(master_replid: "", master_repl_offset: -1)
+}
+
+fn ping() {
+  [resp.BulkString("PING")] |> resp.Array
+}
+
+import gleam/io
