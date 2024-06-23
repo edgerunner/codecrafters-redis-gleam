@@ -35,27 +35,35 @@ pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   let options = mug.new(host, port)
   let assert Ok(socket) = mug.connect(options)
 
-  io.print("PING …")
+  io.print("PING … ")
   let assert "PONG" = send_command(socket, ["PING"])
-  io.println(" PONG")
+  io.println("PONG")
 
   let replconf1 = ["REPLCONF", "listening-port", int.to_string(listening_port)]
-  io.print(string.join(replconf1, " ") <> " …")
+  io.print(string.join(replconf1, " ") <> " … ")
   let assert "OK" = send_command(socket, replconf1)
-  io.println(" OK")
+  io.println("OK")
 
   let replconf2 = ["REPLCONF", "capa", "psync2"]
-  io.print(string.join(replconf2, " ") <> " …")
+  io.print(string.join(replconf2, " ") <> " … ")
   let assert "OK" = send_command(socket, replconf2)
-  io.println(" OK")
+  io.println("OK")
 
   let psync = ["PSYNC", "?", "-1"]
-  io.print("PSYNC …")
+  io.print("PSYNC … ")
   let psync = send_command(socket, psync)
   io.println(psync)
 
-  let assert ["PSYNC", replid, offset] = string.split(psync, " ")
+  let assert ["FULLRESYNC", replid, offset] = string.split(psync, " ")
   let assert Ok(offset) = int.parse(offset)
+
+  io.print("Waiting for RDB file … ")
+  let assert Ok(rdb) = mug.receive(socket, 10_000)
+  io.print("parsing … ")
+  let assert Ok(#(resp.BulkData(rdb), _)) = resp.parse(rdb)
+  io.print("checking … ")
+  let assert True = rdb == rdb.empty
+  io.println("OK")
 
   io.println("Connected to master: " <> host)
   Slave(master_replid: replid, master_repl_offset: offset)
