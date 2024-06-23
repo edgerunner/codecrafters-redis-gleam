@@ -54,7 +54,11 @@ pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   let psync = send_command(socket, psync)
   io.println(psync)
 
-  Slave(master_replid: "", master_repl_offset: -1)
+  let assert ["PSYNC", replid, offset] = string.split(psync, " ")
+  let assert Ok(offset) = int.parse(offset)
+
+  io.println("Connected to master: " <> host)
+  Slave(master_replid: replid, master_repl_offset: offset)
 }
 
 fn send_command(socket: mug.Socket, parts: List(String)) {
