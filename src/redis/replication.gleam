@@ -83,9 +83,8 @@ pub fn handle_psync(
 ) -> resp.Resp {
   case replication, id, offset {
     Master(master_repl_id, master_repl_offset), None, -1 -> {
-      let assert Ok(subject) =
+      let assert Ok(send_rdb) =
         actor.start(Nil, fn(_, _) {
-          process.sleep(50)
           let assert Ok(_) =
             rdb.empty
             |> resp.BulkData
@@ -96,7 +95,7 @@ pub fn handle_psync(
           actor.Stop(process.Normal)
         })
 
-      process.send(subject, Nil)
+      process.send_after(send_rdb, 50, Nil)
 
       ["FULLRESYNC", master_repl_id, int.to_string(master_repl_offset)]
       |> string.join(" ")
