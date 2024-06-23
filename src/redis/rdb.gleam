@@ -221,3 +221,12 @@ fn into_dict(
     Error(data) -> Ok(#(dict, data))
   }
 }
+
+pub const empty: BitArray = <<
+  // header, version
+  "REDIS":utf8, "0011":utf8,
+  // database 0, resize hash:0 expire:0
+  0xfe, 0x00, 0xfb, 0x00, 0x00,
+  // EOF, no checksum, LF
+  0xff, 0x0000000000000000:big-size(64), 0x0a,
+>>

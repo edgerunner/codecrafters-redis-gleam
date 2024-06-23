@@ -68,15 +68,36 @@ fn send_command(socket: mug.Socket, parts: List(String)) {
   payload
 }
 
+import gleam/bytes_builder
+import gleam/erlang/process
 import gleam/option.{type Option, None}
+import gleam/otp/actor
+import glisten
+import redis/rdb
 
 pub fn handle_psync(
   replication: Replication,
   id: Option(String),
   offset: Int,
+  conn: glisten.Connection(a),
 ) -> resp.Resp {
   case replication, id, offset {
     Master(master_repl_id, master_repl_offset), None, -1 -> {
+      let assert Ok(subject) =
+        actor.start(Nil, fn(_, _) {
+          process.sleep(50)
+          let assert Ok(_) =
+            rdb.empty
+            |> resp.BulkData
+            |> resp.encode
+            |> bytes_builder.from_bit_array
+            |> glisten.send(conn, _)
+
+          actor.Stop(process.Normal)
+        })
+
+      process.send(subject, Nil)
+
       ["FULLRESYNC", master_repl_id, int.to_string(master_repl_offset)]
       |> string.join(" ")
       |> resp.SimpleString

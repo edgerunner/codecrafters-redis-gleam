@@ -157,7 +157,7 @@ fn router(
           command.ReplConf(_) -> resp.SimpleString("OK")
 
           command.PSync(id, offset) -> {
-            replication.handle_psync(replication, id, offset)
+            replication.handle_psync(replication, id, offset, conn)
           }
         }
         |> send_resp(conn)
