@@ -12,7 +12,7 @@ import gleam/string
 import glisten
 import mug
 import redis/rdb
-import redis/resp
+import redis/resp.{type Resp}
 
 pub type Replication {
   Master(
@@ -122,5 +122,18 @@ pub fn handle_psync(
     }
     Master(_, _, _), _, _ -> todo
     Slave(_, _, _), _, _ -> resp.SimpleError("ERR This instance is a slave")
+  }
+}
+
+pub fn replicate(replication: Replication, command: Resp) {
+  case replication {
+    Master(id, _, slaves) -> {
+      use #(_, conn) <- list.filter_map(bag.lookup(slaves, id))
+      resp.encode(command)
+      |> bytes_builder.from_bit_array
+      |> glisten.send(conn, _)
+    }
+
+    Slave(_, _, _) -> todo
   }
 }

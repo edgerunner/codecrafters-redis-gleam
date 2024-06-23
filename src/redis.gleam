@@ -57,12 +57,14 @@ fn router(
 
           command.Set(key: key, value: value, expiry: None) -> {
             store.insert(table, key, value.String(value), None)
+            replication.replicate(replication, resp)
             resp.SimpleString("OK")
           }
 
           command.Set(key: key, value: value, expiry: Some(expiry)) -> {
             let deadline = erlang.system_time(erlang.Millisecond) + expiry
             store.insert(table, key, value.String(value), Some(deadline))
+            replication.replicate(replication, resp)
             resp.SimpleString("OK")
           }
 
@@ -125,6 +127,7 @@ fn router(
             }
             |> result.map_error(resp.SimpleError)
             |> result.unwrap_both
+            |> do(replication.replicate(replication, resp))
 
           command.XRange(stream_key, start, end) ->
             case store.lookup(table, stream_key) {
@@ -174,4 +177,8 @@ fn send_resp(
   resp.encode(resp)
   |> bytes_builder.from_bit_array
   |> glisten.send(conn, _)
+}
+
+fn do(prev, _x) {
+  prev
 }
