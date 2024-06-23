@@ -8,6 +8,7 @@ import gleam/iterator
 import gleam/list
 import gleam/option.{type Option, None}
 import gleam/otp/actor
+import gleam/result
 import gleam/string
 import glisten
 import mug
@@ -69,13 +70,19 @@ pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   let assert ["FULLRESYNC", replid, offset] = string.split(psync, " ")
   let assert Ok(offset) = int.parse(offset)
 
-  io.print("Waiting for RDB file … ")
-  let assert Ok(rdb) = mug.receive(socket, 10_000)
-  io.print("parsing … ")
-  let assert Ok(#(resp.BulkData(rdb), _)) = resp.parse(rdb)
-  io.print("checking … ")
-  let assert True = rdb == rdb.empty
-  io.println("OK")
+  let _ =
+    {
+      io.print("Waiting for RDB file … ")
+      use rdb <- result.then(mug.receive(socket, 10_000) |> result.nil_error)
+      io.print("parsing … ")
+      use #(rdb, _) <- result.then(resp.parse(rdb) |> result.nil_error)
+      let assert resp.BulkData(rdb) = rdb
+      io.print("checking … ")
+      use rdb <- result.then(rdb.parse(rdb) |> result.nil_error)
+      io.println("OK")
+      Ok(rdb)
+    }
+    |> result.map_error(fn(_) { io.println("FAIL") })
 
   io.println("Connected to master: " <> host)
   Slave(master_replid: replid, master_repl_offset: offset, socket: socket)
