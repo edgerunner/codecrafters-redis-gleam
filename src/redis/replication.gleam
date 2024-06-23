@@ -1,10 +1,18 @@
+import bravo.{Public}
+import bravo/bag.{type Bag}
+
 pub type Replication {
-  Master(master_replid: String, master_repl_offset: Int)
-  Slave(master_replid: String, master_repl_offset: Int)
+  Master(
+    master_replid: String,
+    master_repl_offset: Int,
+    slaves: Bag(#(String, glisten.Connection(Nil))),
+  )
+  Slave(master_replid: String, master_repl_offset: Int, socket: mug.Socket)
 }
 
 pub fn master() -> Replication {
-  Master(master_replid: random_replid(), master_repl_offset: 0)
+  let assert Ok(slaves) = bag.new("slaves", 1, Public)
+  Master(master_replid: random_replid(), master_repl_offset: 0, slaves: slaves)
 }
 
 import gleam/int
@@ -66,7 +74,7 @@ pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   io.println("OK")
 
   io.println("Connected to master: " <> host)
-  Slave(master_replid: replid, master_repl_offset: offset)
+  Slave(master_replid: replid, master_repl_offset: offset, socket: socket)
 }
 
 fn send_command(socket: mug.Socket, parts: List(String)) {
@@ -91,10 +99,10 @@ pub fn handle_psync(
   replication: Replication,
   id: Option(String),
   offset: Int,
-  conn: glisten.Connection(a),
+  conn: glisten.Connection(Nil),
 ) -> resp.Resp {
   case replication, id, offset {
-    Master(master_repl_id, master_repl_offset), None, -1 -> {
+    Master(master_repl_id, master_repl_offset, slaves), None, -1 -> {
       let assert Ok(send_rdb) =
         actor.start(Nil, fn(_, _) {
           let assert Ok(_) =
@@ -107,13 +115,15 @@ pub fn handle_psync(
           actor.Stop(process.Normal)
         })
 
+      bag.insert(slaves, [#(master_repl_id, conn)])
+
       process.send_after(send_rdb, 50, Nil)
 
       ["FULLRESYNC", master_repl_id, int.to_string(master_repl_offset)]
       |> string.join(" ")
       |> resp.SimpleString
     }
-    Master(_, _), _, _ -> todo
-    Slave(_, _), _, _ -> resp.SimpleError("ERR This instance is a slave")
+    Master(_, _, _), _, _ -> todo
+    Slave(_, _, _), _, _ -> resp.SimpleError("ERR This instance is a slave")
   }
 }

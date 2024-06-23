@@ -39,11 +39,11 @@ pub fn main() {
 }
 
 fn router(
-  msg: Message(a),
+  msg: Message(Nil),
   table: Table,
   config: Config,
   replication: Replication,
-  conn: Connection(a),
+  conn: Connection(Nil),
 ) {
   case msg {
     Packet(resp_binary) -> {
