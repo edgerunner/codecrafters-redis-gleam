@@ -1,5 +1,18 @@
 import bravo.{Public}
 import bravo/bag.{type Bag}
+import gleam/bytes_builder
+import gleam/erlang/process
+import gleam/int
+import gleam/io
+import gleam/iterator
+import gleam/list
+import gleam/option.{type Option, None}
+import gleam/otp/actor
+import gleam/string
+import glisten
+import mug
+import redis/rdb
+import redis/resp
 
 pub type Replication {
   Master(
@@ -15,10 +28,6 @@ pub fn master() -> Replication {
   Master(master_replid: random_replid(), master_repl_offset: 0, slaves: slaves)
 }
 
-import gleam/int
-import gleam/iterator
-import gleam/string
-
 fn random_replid() -> String {
   fn() {
     case int.random(36) {
@@ -32,11 +41,6 @@ fn random_replid() -> String {
   |> iterator.to_list
   |> string.from_utf_codepoints
 }
-
-import gleam/io
-import gleam/list
-import mug
-import redis/resp
 
 pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   io.println("Connecting to master: " <> host)
@@ -87,13 +91,6 @@ fn send_command(socket: mug.Socket, parts: List(String)) {
   let assert Ok(#(resp.SimpleString(payload), _)) = resp.parse(response)
   payload
 }
-
-import gleam/bytes_builder
-import gleam/erlang/process
-import gleam/option.{type Option, None}
-import gleam/otp/actor
-import glisten
-import redis/rdb
 
 pub fn handle_psync(
   replication: Replication,
