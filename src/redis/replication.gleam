@@ -51,10 +51,19 @@ pub fn slave(
   with handler: fn(BitArray, Int) -> Int,
 ) {
   let when_ready: Subject(Replication) = process.new_subject()
-  let slave_spec: actor.Spec(Int, BitArray) =
+  let slave_spec: actor.Spec(Int, mug.TcpMessage) =
     actor.Spec(
       init_timeout: 10_000,
-      loop: fn(msg, state) { handler(msg, state) |> actor.continue },
+      loop: fn(msg, state) {
+        case msg {
+          mug.Packet(_, bits) -> {
+            handler(bits, state) |> actor.continue
+          }
+          mug.SocketClosed(_) -> actor.Stop(process.Normal)
+          mug.TcpError(_, _) ->
+            actor.Stop(process.Abnormal(reason: "TCP error"))
+        }
+      },
       init: fn() {
         let #(replid, socket) =
           slave_init(to: host, on: port, from: listening_port)
@@ -62,14 +71,8 @@ pub fn slave(
         let selector =
           process.new_selector()
           |> mug.selecting_tcp_messages(fn(msg) {
-            case msg {
-              mug.Packet(_, bits) -> {
-                mug.receive_next_packet_as_message(socket)
-                bits
-              }
-              mug.SocketClosed(_) -> panic as "Connection down"
-              mug.TcpError(_, _) -> panic as "Connection error"
-            }
+            mug.receive_next_packet_as_message(socket)
+            msg
           })
 
         mug.receive_next_packet_as_message(socket)
