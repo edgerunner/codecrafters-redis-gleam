@@ -26,10 +26,20 @@ type Parse(a) =
 
 import gleam/bit_array
 import gleam/int
+import gleam/iterator.{type Iterator}
+import gleam/list
 import gleam/result
 import gleam/string
 
 const crlf = <<"\r\n":utf8>>
+
+pub fn iterate(input: BitArray) -> Iterator(Resp) {
+  use bits <- iterator.unfold(from: input)
+  case parse(bits) {
+    Ok(#(resp, rest)) -> iterator.Next(resp, rest)
+    Error(_) -> iterator.Done
+  }
+}
 
 pub fn parse(input: BitArray) -> Parse(Resp) {
   case input {
@@ -121,9 +131,6 @@ fn parse_slice(input: BitArray, length: Int) -> Parse(BitArray) {
   use rest <- result.then(rest)
   Ok(#(slice, rest))
 }
-
-import gleam/iterator
-import gleam/list
 
 fn parse_array(input: BitArray) -> Parse(Resp) {
   use #(length, rest) <- result.then(parse_length(input, 0))

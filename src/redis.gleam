@@ -190,7 +190,10 @@ fn do(prev, _x) {
 }
 
 fn slave_handler(resp_binary: BitArray, offset: Int, table: Table) -> Int {
-  let assert Ok(#(resp, _)) = resp_binary |> resp.parse
+  use offset, resp <- iterator.fold(
+    over: resp.iterate(resp_binary),
+    from: offset,
+  )
   let assert Ok(command) = command.parse(resp)
   case command {
     command.Set(key: key, value: value, expiry: None) -> {
