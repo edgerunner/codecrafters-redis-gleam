@@ -122,7 +122,7 @@ fn slave_init(to host: String, on port: Int, from listening_port: Int) {
   let _ =
     {
       io.print("Waiting for RDB file … ")
-      use rdb <- result.then(mug.receive(socket, 10_000) |> result.nil_error)
+      use rdb <- result.then(mug.receive(socket, 1000) |> result.nil_error)
       io.print("parsing … ")
       use #(rdb, _) <- result.then(resp.parse(rdb) |> result.nil_error)
       let assert resp.BulkData(rdb) = rdb
