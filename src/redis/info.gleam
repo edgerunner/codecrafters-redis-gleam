@@ -1,4 +1,3 @@
-import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -12,7 +11,7 @@ pub fn handle_replication(
   [
     #("role", to_role(replicaof)),
     #("master_replid", state.master_replid),
-    #("master_repl_offset", state.master_repl_offset |> int.to_string),
+    #("master_repl_offset", "0"),
   ]
   |> to_resp
 }

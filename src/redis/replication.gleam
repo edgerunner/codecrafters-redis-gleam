@@ -1,13 +1,14 @@
 import bravo.{Public}
 import bravo/bag.{type Bag}
 import gleam/bytes_builder
-import gleam/erlang/process
+import gleam/erlang/process.{type Subject}
 import gleam/int
 import gleam/io
 import gleam/iterator
 import gleam/list
 import gleam/option.{type Option, None}
 import gleam/otp/actor
+import gleam/otp/task
 import gleam/result
 import gleam/string
 import glisten
@@ -21,7 +22,7 @@ pub type Replication {
     master_repl_offset: Int,
     slaves: Bag(#(String, glisten.Connection(Nil))),
   )
-  Slave(master_replid: String, master_repl_offset: Int, socket: mug.Socket)
+  Slave(master_replid: String)
 }
 
 pub fn master() -> Replication {
@@ -43,7 +44,52 @@ fn random_replid() -> String {
   |> string.from_utf_codepoints
 }
 
-pub fn slave(to host: String, on port: Int, from listening_port: Int) {
+pub fn slave(
+  to host: String,
+  on port: Int,
+  from listening_port: Int,
+  with handler: fn(BitArray, Int) -> Int,
+) {
+  let when_ready: Subject(Replication) = process.new_subject()
+  let slave_spec: actor.Spec(Int, BitArray) =
+    actor.Spec(
+      init_timeout: 10_000,
+      loop: fn(msg, state) { handler(msg, state) |> actor.continue },
+      init: fn() {
+        let #(replid, socket) =
+          slave_init(to: host, on: port, from: listening_port)
+
+        let selector =
+          process.new_selector()
+          |> mug.selecting_tcp_messages(fn(msg) {
+            case msg {
+              mug.Packet(_, bits) -> {
+                mug.receive_next_packet_as_message(socket)
+                bits
+              }
+              mug.SocketClosed(_) -> panic as "Connection down"
+              mug.TcpError(_, _) -> panic as "Connection error"
+            }
+          })
+
+        mug.receive_next_packet_as_message(socket)
+        actor.send(when_ready, Slave(replid))
+
+        actor.Ready(0, selector)
+      },
+    )
+
+  io.println("Starting slave actor …")
+  let assert Ok(_slave_process) = actor.start_spec(slave_spec)
+  io.println("Started slave actor")
+
+  process.receive(when_ready, 10_000)
+  |> result.lazy_unwrap(or: fn() {
+    panic as "Cannot start slave listener process"
+  })
+}
+
+fn slave_init(to host: String, on port: Int, from listening_port: Int) {
   io.println("Connecting to master: " <> host)
   let options = mug.new(host, port)
   let assert Ok(socket) = mug.connect(options)
@@ -68,7 +114,7 @@ pub fn slave(to host: String, on port: Int, from listening_port: Int) {
   io.println(psync)
 
   let assert ["FULLRESYNC", replid, offset] = string.split(psync, " ")
-  let assert Ok(offset) = int.parse(offset)
+  let assert Ok(_offset) = int.parse(offset)
 
   let _ =
     {
@@ -85,7 +131,7 @@ pub fn slave(to host: String, on port: Int, from listening_port: Int) {
     |> result.map_error(fn(_) { io.println("FAIL") })
 
   io.println("Connected to master: " <> host)
-  Slave(master_replid: replid, master_repl_offset: offset, socket: socket)
+  #(replid, socket)
 }
 
 fn send_command(socket: mug.Socket, parts: List(String)) {
@@ -107,28 +153,24 @@ pub fn handle_psync(
 ) -> resp.Resp {
   case replication, id, offset {
     Master(master_repl_id, master_repl_offset, slaves), None, -1 -> {
-      let assert Ok(send_rdb) =
-        actor.start(Nil, fn(_, _) {
-          let assert Ok(_) =
-            rdb.empty
-            |> resp.BulkData
-            |> resp.encode
-            |> bytes_builder.from_bit_array
-            |> glisten.send(conn, _)
-
-          actor.Stop(process.Normal)
-        })
+      task.async(fn() {
+        process.sleep(50)
+        let assert Ok(_) =
+          rdb.empty
+          |> resp.BulkData
+          |> resp.encode
+          |> bytes_builder.from_bit_array
+          |> glisten.send(conn, _)
+      })
 
       bag.insert(slaves, [#(master_repl_id, conn)])
-
-      process.send_after(send_rdb, 50, Nil)
 
       ["FULLRESYNC", master_repl_id, int.to_string(master_repl_offset)]
       |> string.join(" ")
       |> resp.SimpleString
     }
     Master(_, _, _), _, _ -> todo
-    Slave(_, _, _), _, _ -> resp.SimpleError("ERR This instance is a slave")
+    Slave(_), _, _ -> resp.SimpleError("ERR This instance is a slave")
   }
 }
 
@@ -141,6 +183,6 @@ pub fn replicate(replication: Replication, command: Resp) {
       |> glisten.send(conn, _)
     }
 
-    Slave(_, _, _) -> todo
+    Slave(_) -> todo
   }
 }

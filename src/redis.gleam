@@ -1,3 +1,4 @@
+import gleam/bit_array
 import gleam/bytes_builder
 import gleam/erlang
 import gleam/erlang/process
@@ -26,7 +27,12 @@ pub fn main() {
   let replication = case config.replicaof {
     None -> replication.master()
     Some(#(master, port)) ->
-      replication.slave(to: master, on: port, from: config.port)
+      replication.slave(
+        to: master,
+        on: port,
+        from: config.port,
+        with: fn(msg, state) { slave_handler(msg, state, table) },
+      )
   }
 
   let assert Ok(_) =
@@ -181,4 +187,24 @@ fn send_resp(
 
 fn do(prev, _x) {
   prev
+}
+
+fn slave_handler(resp_binary: BitArray, offset: Int, table: Table) -> Int {
+  let assert Ok(#(resp, _)) = resp_binary |> resp.parse
+  let assert Ok(command) = command.parse(resp)
+  case command {
+    command.Set(key: key, value: value, expiry: None) -> {
+      store.insert(table, key, value.String(value), None)
+      bit_array.byte_size(resp_binary)
+    }
+
+    command.Set(key: key, value: value, expiry: Some(expiry)) -> {
+      let deadline = erlang.system_time(erlang.Millisecond) + expiry
+      store.insert(table, key, value.String(value), Some(deadline))
+      bit_array.byte_size(resp_binary)
+    }
+
+    _ -> 0
+  }
+  + offset
 }
