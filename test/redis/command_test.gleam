@@ -214,17 +214,27 @@ pub fn parse_subsequent_psync_test() {
   ))
 }
 
-fn should_parse_into(input: String, expected: command.Command) {
-  command_resp(input)
-  |> command.parse
-  |> should.be_ok
-  |> should.equal(expected)
+pub fn parse_replconf_getack_wildcard_test() {
+  "REPLCONF GETACK *"
+  |> should_parse_into(command.ReplConf(command.ReplConfGetAck(None)))
+}
+
+pub fn parse_replconf_getack_with_offset_test() {
+  "REPLCONF GETACK 456"
+  |> should_parse_into(command.ReplConf(command.ReplConfGetAck(Some(456))))
 }
 
 // Helpers
 
 import gleam/list
 import gleam/string
+
+fn should_parse_into(input: String, expected: command.Command) {
+  command_resp(input)
+  |> command.parse
+  |> should.be_ok
+  |> should.equal(expected)
+}
 
 fn command_resp(str: String) -> resp.Resp {
   string.split(str, on: " ")

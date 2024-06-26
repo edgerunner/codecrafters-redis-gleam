@@ -34,6 +34,7 @@ pub type InfoSubcommand {
 pub type ReplConfSubcommand {
   ReplConfListeningPort(port: Int)
   ReplConfCapa(capa: Set(String))
+  ReplConfGetAck(offset: Option(Int))
 }
 
 pub type StreamEntryId {
@@ -215,6 +216,14 @@ fn parse_replconf(
     "CAPA", [BulkString(capa), ..rest] ->
       set.insert(capas, capa)
       |> parse_replconf(rest, _)
+    "GETACK", [BulkString("*")] -> None |> ReplConfGetAck |> ReplConf |> Ok
+    "GETACK", [BulkString(offset)] ->
+      int.parse(offset)
+      |> result.map(Some)
+      |> result.map(ReplConfGetAck)
+      |> result.map(ReplConf)
+      |> result.replace_error(InvalidArgument)
+
     _, _ -> Error(InvalidSubcommand)
   }
 }
