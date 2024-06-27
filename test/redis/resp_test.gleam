@@ -123,6 +123,30 @@ pub fn parse_null_array_test() {
   |> should.equal(resp.Null(resp.NullArray))
 }
 
+pub fn parse_integer_345_test() {
+  <<":345\r\n":utf8>>
+  |> resp.parse
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.Integer(345))
+}
+
+pub fn parse_integer_plus_345_test() {
+  <<":+345\r\n":utf8>>
+  |> resp.parse
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.Integer(345))
+}
+
+pub fn parse_integer_minus_345_test() {
+  <<":-345\r\n":utf8>>
+  |> resp.parse
+  |> should.be_ok
+  |> pair.first
+  |> should.equal(resp.Integer(-345))
+}
+
 pub fn encode_simple_string_pong_test() {
   resp.SimpleString("PONG")
   |> resp.encode
@@ -175,6 +199,18 @@ pub fn encode_nested_array_test() {
   |> should.equal(<<
     "*3\r\n+ECHO\r\n*2\r\n$5\r\nHello\r\n$6\r\nWorld!\r\n_\r\n":utf8,
   >>)
+}
+
+pub fn encode_integer_345_test() {
+  resp.Integer(345)
+  |> resp.encode
+  |> should.equal(<<":345\r\n":utf8>>)
+}
+
+pub fn encode_integer_minus_345_test() {
+  resp.Integer(-345)
+  |> resp.encode
+  |> should.equal(<<":-345\r\n":utf8>>)
 }
 
 pub fn convert_simple_string_to_string_test() {

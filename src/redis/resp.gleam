@@ -5,6 +5,7 @@ pub type Resp {
   Array(List(Resp))
   Null(NullType)
   SimpleError(String)
+  Integer(Int)
 }
 
 pub type NullType {
@@ -53,6 +54,8 @@ pub fn parse(input: BitArray) -> Parse(Resp) {
     <<"$":utf8, rest:bits>> -> parse_bulk_string(rest)
     <<"*-1":utf8, rest:bits>> -> parse_null(NullArray, rest)
     <<"*":utf8, rest:bits>> -> parse_array(rest)
+    <<":":utf8, rest:bits>> ->
+      parse_simple(rest) |> then(int.parse) |> map(Integer)
     unexpected -> Error(UnexpectedInput(unexpected))
   }
 }
@@ -65,6 +68,14 @@ fn parse_null(null_type: NullType, input: BitArray) -> Parse(Resp) {
 fn map(parse: Parse(a), with mapper: fn(a) -> b) -> Parse(b) {
   use #(a, rest) <- result.map(parse)
   #(mapper(a), rest)
+}
+
+fn then(parse: Parse(a), with mapper: fn(a) -> Result(b, e)) -> Parse(b) {
+  use #(a, rest) <- result.then(parse)
+  case mapper(a) {
+    Ok(b) -> Ok(#(b, rest))
+    Error(_) -> Error(ParseError)
+  }
 }
 
 fn parse_simple(input: BitArray) -> Parse(String) {
@@ -162,6 +173,7 @@ pub fn encode(resp: Resp) -> BitArray {
     BulkString(s) -> encode_bulk_string(s)
     BulkData(b) -> encode_bulk_data(b)
     Array(a) -> encode_array(a)
+    Integer(i) -> encode_integer(i)
   }
 }
 
@@ -202,6 +214,10 @@ fn encode_array(array: List(Resp)) -> BitArray {
   <<buffer:bits, encode(resp):bits>>
 }
 
+fn encode_integer(integer: Int) -> BitArray {
+  <<":":utf8, int.to_string(integer):utf8, crlf:bits>>
+}
+
 pub fn to_string(resp: Resp) -> Result(String, Nil) {
   case resp {
     BulkString(bs) -> Ok(bs)
@@ -212,7 +228,9 @@ pub fn to_string(resp: Resp) -> Result(String, Nil) {
 
 pub fn to_list(resp: Resp) -> List(Resp) {
   case resp {
-    SimpleString(_) | BulkString(_) | SimpleError(_) | BulkData(_) -> [resp]
+    SimpleString(_) | BulkString(_) | SimpleError(_) | BulkData(_) | Integer(_) -> [
+      resp,
+    ]
     Array(list) -> list
     Null(_) -> []
   }

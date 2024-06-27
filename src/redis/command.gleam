@@ -57,7 +57,7 @@ pub fn parse(resp: Resp) -> Result(Command, Error) {
   case resp {
     SimpleString(_) | BulkString(_) -> parse_list([resp])
     Array(list) -> parse_list(list)
-    Null(_) | resp.BulkData(_) -> Error(InvalidCommand)
+    Null(_) | resp.BulkData(_) | resp.Integer(_) -> Error(InvalidCommand)
     resp.SimpleError(e) -> Error(UnknownCommand(e))
   }
 }
