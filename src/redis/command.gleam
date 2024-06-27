@@ -21,6 +21,7 @@ pub type Command {
   Info(InfoSubcommand)
   ReplConf(ReplConfSubcommand)
   PSync(id: Option(String), offset: Int)
+  Wait(replicas: Int, timeout: Int)
 }
 
 pub type ConfigSubcommand {
@@ -123,6 +124,8 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     "REPLCONF", args -> parse_replconf(args, set.new())
 
     "PSYNC", args -> parse_psync(args)
+
+    "WAIT", args -> parse_wait(args)
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }
@@ -238,6 +241,17 @@ fn parse_psync(args: List(Resp)) -> Result(Command, Error) {
       int.parse(offset)
       |> result.map(PSync(Some(id), _))
       |> result.replace_error(InvalidArgument)
+    _ -> Error(InvalidArgument)
+  }
+}
+
+fn parse_wait(args: List(Resp)) -> Result(Command, Error) {
+  case args {
+    [BulkString(replicas), BulkString(timeout)] -> {
+      use replicas <- as_int(replicas)
+      use timeout <- as_int(timeout)
+      Wait(replicas, timeout) |> Ok
+    }
     _ -> Error(InvalidArgument)
   }
 }
