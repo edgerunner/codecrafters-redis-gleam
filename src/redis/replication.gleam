@@ -203,3 +203,10 @@ pub fn replicate(replication: Replication, command: Resp) {
     Slave(_) -> todo
   }
 }
+
+pub fn slave_count(replication: Replication) -> Int {
+  case replication {
+    Master(id, _offset, slaves) -> bag.lookup(slaves, id) |> list.length
+    Slave(_) -> 0
+  }
+}
