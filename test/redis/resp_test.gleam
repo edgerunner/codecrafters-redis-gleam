@@ -4,147 +4,114 @@ import redis/resp
 
 pub fn parse_simple_string_pong_test() {
   <<"+PONG\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.SimpleString("PONG"))
+  |> should_parse_into(resp.SimpleString("PONG"))
 }
 
 pub fn parse_simple_string_with_early_crlf_test() {
   <<"+PO\r\nNG\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.SimpleString("PO"))
+  |> should_parse_into(resp.SimpleString("PO"))
 }
 
 pub fn fail_parse_simple_string_abrupt_end_test() {
   <<"+PONG":utf8>>
-  |> resp.parse
-  |> should.be_error
-  |> should.equal(resp.UnexpectedEnd)
+  |> should_fail_to_parse(because: resp.UnexpectedEnd)
 }
 
 pub fn fail_parse_simple_string_invalid_end_test() {
   <<"+PONG\n":utf8>>
-  |> resp.parse
-  |> should.be_error
-  |> should.equal(resp.UnexpectedEnd)
+  |> should_fail_to_parse(because: resp.UnexpectedEnd)
 }
 
 pub fn parse_simple_error_test() {
   <<"-WRONG\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.SimpleError("WRONG"))
+  |> should_parse_into(resp.SimpleError("WRONG"))
 }
 
 pub fn parse_bulk_string_echo_test() {
   <<"$4\r\nECHO\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.BulkString("ECHO"))
+  |> should_parse_into(resp.BulkString("ECHO"))
 }
 
 pub fn parse_bulk_data_test() {
   <<"$4\r\n":utf8, 0xff, 0x01, 0x02, 0x03>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.BulkData(<<0xff, 0x01, 0x02, 0x03>>))
+  |> should_parse_into(resp.BulkData(<<0xff, 0x01, 0x02, 0x03>>))
 }
 
 pub fn fail_parse_bulk_string_without_terminator_test() {
   <<"$4\r\nECHO":utf8>>
-  |> resp.parse
-  |> should.be_error
-  |> should.equal(resp.UnexpectedEnd)
+  |> should_fail_to_parse(because: resp.UnexpectedEnd)
 }
 
 pub fn fail_parse_bulk_string_with_longer_length_test() {
   <<"$8\r\nECHO\r\n":utf8>>
-  |> resp.parse
-  |> should.be_error
-  |> should.equal(resp.InvalidLength)
+  |> should_fail_to_parse(because: resp.InvalidLength)
 }
 
 pub fn parse_array_echo_hey_test() {
   <<"*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.Array([resp.BulkString("ECHO"), resp.BulkString("hey")]))
+  |> should_parse_into(
+    resp.Array([resp.BulkString("ECHO"), resp.BulkString("hey")]),
+  )
 }
 
 pub fn fail_parse_array_with_wrong_length_test() {
   <<"*3\r\n$4\r\nECHO\r\n$3\r\nhey\r\n":utf8>>
-  |> resp.parse
-  |> should.be_error
-  |> should.equal(resp.InvalidLength)
+  |> should_fail_to_parse(because: resp.InvalidLength)
 }
 
 pub fn fail_parse_array_with_failing_element_test() {
   <<"*3\r\n+ECHO\r\n+he\ny\r\n":utf8>>
-  |> resp.parse
-  |> should.be_error
-  |> should.equal(resp.UnexpectedInput(<<"\ny\r\n":utf8>>))
+  |> should_fail_to_parse(because: resp.UnexpectedInput(<<"\ny\r\n":utf8>>))
 }
 
 pub fn parse_null_test() {
   <<"_\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.Null(resp.NullPrimitive))
+  |> should_parse_into(resp.Null(resp.NullPrimitive))
 }
 
 pub fn fail_parse_null_with_content_test() {
   <<"_no!\r\n":utf8>>
-  |> resp.parse
-  |> should.be_error
-  |> should.equal(resp.UnexpectedInput(<<"no!\r\n":utf8>>))
+  |> should_fail_to_parse(because: resp.UnexpectedInput(<<"no!\r\n":utf8>>))
 }
 
 pub fn parse_null_string_test() {
   <<"$-1\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.Null(resp.NullString))
+  |> should_parse_into(resp.Null(resp.NullString))
 }
 
 pub fn parse_null_array_test() {
   <<"*-1\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.Null(resp.NullArray))
+  |> should_parse_into(resp.Null(resp.NullArray))
 }
 
 pub fn parse_integer_345_test() {
   <<":345\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.Integer(345))
+  |> should_parse_into(resp.Integer(345))
 }
 
 pub fn parse_integer_plus_345_test() {
   <<":+345\r\n":utf8>>
-  |> resp.parse
-  |> should.be_ok
-  |> pair.first
-  |> should.equal(resp.Integer(345))
+  |> should_parse_into(resp.Integer(345))
 }
 
 pub fn parse_integer_minus_345_test() {
   <<":-345\r\n":utf8>>
+  |> should_parse_into(resp.Integer(-345))
+}
+
+fn should_parse_into(input: BitArray, resp: resp.Resp) {
+  input
   |> resp.parse
   |> should.be_ok
   |> pair.first
-  |> should.equal(resp.Integer(-345))
+  |> should.equal(resp)
+}
+
+fn should_fail_to_parse(input: BitArray, because error: resp.ParseError) {
+  input
+  |> resp.parse
+  |> should.be_error
+  |> should.equal(error)
 }
 
 pub fn encode_simple_string_pong_test() {
@@ -221,7 +188,7 @@ pub fn convert_simple_string_to_string_test() {
 }
 
 pub fn convert_bulk_string_to_string_test() {
-  resp.SimpleString("Wonderful\r\nworld")
+  resp.BulkString("Wonderful\r\nworld")
   |> resp.to_string
   |> should.be_ok
   |> should.equal("Wonderful\r\nworld")
