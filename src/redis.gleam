@@ -1,4 +1,3 @@
-import gleam/bit_array
 import gleam/bytes_builder
 import gleam/erlang
 import gleam/erlang/process
@@ -205,21 +204,23 @@ fn slave_handler(
   table: Table,
   socket: mug.Socket,
 ) -> Int {
-  use offset, resp <- iterator.fold(
+  use offset, #(resp, command_offset) <- iterator.fold(
     over: resp.iterate(resp_binary),
     from: offset,
   )
   let assert Ok(command) = command.parse(resp)
   case command {
+    command.Ping -> command_offset
+
     command.Set(key: key, value: value, expiry: None) -> {
       store.insert(table, key, value.String(value), None)
-      bit_array.byte_size(resp_binary)
+      command_offset
     }
 
     command.Set(key: key, value: value, expiry: Some(expiry)) -> {
       let deadline = erlang.system_time(erlang.Millisecond) + expiry
       store.insert(table, key, value.String(value), Some(deadline))
-      bit_array.byte_size(resp_binary)
+      command_offset
     }
 
     command.ReplConf(command.ReplConfGetAck(_)) -> {
@@ -228,7 +229,7 @@ fn slave_handler(
       |> resp.Array
       |> resp.encode
       |> mug.send(socket, _)
-      |> result.replace(bit_array.byte_size(resp_binary))
+      |> result.replace(command_offset)
       |> result.unwrap(or: 0)
     }
 

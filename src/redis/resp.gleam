@@ -33,10 +33,13 @@ import gleam/string
 
 const crlf = <<"\r\n":utf8>>
 
-pub fn iterate(input: BitArray) -> Iterator(Resp) {
+pub fn iterate(input: BitArray) -> Iterator(#(Resp, Int)) {
   use bits <- iterator.unfold(from: input)
   case parse(bits) {
-    Ok(#(resp, rest)) -> iterator.Next(resp, rest)
+    Ok(#(resp, rest)) -> {
+      let offset = bit_array.byte_size(bits) - bit_array.byte_size(rest)
+      iterator.Next(#(resp, offset), rest)
+    }
     Error(_) -> iterator.Done
   }
 }
