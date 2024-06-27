@@ -2,12 +2,14 @@ import gleam/bit_array
 import gleam/bytes_builder
 import gleam/erlang
 import gleam/erlang/process
+import gleam/int
 import gleam/iterator
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/otp/actor
 import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
+import mug
 import redis/command
 import redis/config.{type Config}
 import redis/info
@@ -31,7 +33,9 @@ pub fn main() {
         to: master,
         on: port,
         from: config.port,
-        with: fn(msg, state) { slave_handler(msg, state, table) },
+        with: fn(msg, state, socket) {
+          slave_handler(msg, state, table, socket)
+        },
       )
   }
 
@@ -163,7 +167,13 @@ fn router(
           command.Info(command.InfoReplication) ->
             info.handle_replication(config.replicaof, replication)
 
-          command.ReplConf(_) -> resp.SimpleString("OK")
+          command.ReplConf(command.ReplConfCapa(_)) -> resp.SimpleString("OK")
+
+          command.ReplConf(command.ReplConfListeningPort(_)) ->
+            resp.SimpleString("OK")
+
+          command.ReplConf(command.ReplConfGetAck(_)) ->
+            resp.SimpleError("ERR Only the master can send this")
 
           command.PSync(id, offset) -> {
             replication.handle_psync(replication, id, offset, conn)
@@ -189,7 +199,12 @@ fn do(prev, _x) {
   prev
 }
 
-fn slave_handler(resp_binary: BitArray, offset: Int, table: Table) -> Int {
+fn slave_handler(
+  resp_binary: BitArray,
+  offset: Int,
+  table: Table,
+  socket: mug.Socket,
+) -> Int {
   use offset, resp <- iterator.fold(
     over: resp.iterate(resp_binary),
     from: offset,
@@ -205,6 +220,16 @@ fn slave_handler(resp_binary: BitArray, offset: Int, table: Table) -> Int {
       let deadline = erlang.system_time(erlang.Millisecond) + expiry
       store.insert(table, key, value.String(value), Some(deadline))
       bit_array.byte_size(resp_binary)
+    }
+
+    command.ReplConf(command.ReplConfGetAck(_)) -> {
+      ["REPLCONF", "ACK", int.to_string(offset)]
+      |> list.map(resp.BulkString)
+      |> resp.Array
+      |> resp.encode
+      |> mug.send(socket, _)
+      |> result.replace(bit_array.byte_size(resp_binary))
+      |> result.unwrap(or: 0)
     }
 
     _ -> 0

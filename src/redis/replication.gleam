@@ -48,7 +48,7 @@ pub fn slave(
   to host: String,
   on port: Int,
   from listening_port: Int,
-  with handler: fn(BitArray, Int) -> Int,
+  with handler: fn(BitArray, Int, mug.Socket) -> Int,
 ) {
   let when_ready: Subject(Replication) = process.new_subject()
   let slave_spec: actor.Spec(Int, mug.TcpMessage) =
@@ -56,8 +56,8 @@ pub fn slave(
       init_timeout: 10_000,
       loop: fn(msg, state) {
         case msg {
-          mug.Packet(_, bits) -> {
-            handler(bits, state) |> actor.continue
+          mug.Packet(socket, bits) -> {
+            handler(bits, state, socket) |> actor.continue
           }
           mug.SocketClosed(_) -> actor.Stop(process.Normal)
           mug.TcpError(_, _) ->
@@ -65,7 +65,7 @@ pub fn slave(
         }
       },
       init: fn() {
-        let #(replid, socket) =
+        let #(replid, socket, rest) =
           slave_init(to: host, on: port, from: listening_port)
 
         let selector =
@@ -78,7 +78,9 @@ pub fn slave(
         mug.receive_next_packet_as_message(socket)
         actor.send(when_ready, Slave(replid))
 
-        actor.Ready(0, selector)
+        let offset = handler(rest, 0, socket)
+
+        actor.Ready(offset, selector)
       },
     )
 
@@ -98,43 +100,55 @@ fn slave_init(to host: String, on port: Int, from listening_port: Int) {
   let assert Ok(socket) = mug.connect(options)
 
   io.print("PING … ")
-  let assert "PONG" = send_command(socket, ["PING"])
+  let assert #("PONG", <<>>) = send_command(socket, ["PING"])
   io.println("PONG")
 
   let replconf1 = ["REPLCONF", "listening-port", int.to_string(listening_port)]
   io.print(string.join(replconf1, " ") <> " … ")
-  let assert "OK" = send_command(socket, replconf1)
+  let assert #("OK", <<>>) = send_command(socket, replconf1)
   io.println("OK")
 
   let replconf2 = ["REPLCONF", "capa", "psync2"]
   io.print(string.join(replconf2, " ") <> " … ")
-  let assert "OK" = send_command(socket, replconf2)
+  let assert #("OK", <<>>) = send_command(socket, replconf2)
   io.println("OK")
 
   let psync = ["PSYNC", "?", "-1"]
   io.print("PSYNC … ")
-  let psync = send_command(socket, psync)
+  let #(psync, rest) = send_command(socket, psync)
   io.println(psync)
 
   let assert ["FULLRESYNC", replid, offset] = string.split(psync, " ")
   let assert Ok(_offset) = int.parse(offset)
 
-  let _ =
+  let rest =
     {
       io.print("Waiting for RDB file … ")
-      use rdb <- result.then(mug.receive(socket, 1000) |> result.nil_error)
+      let possible_rdb = case rest {
+        <<>> -> {
+          mug.receive(socket, 1000) |> result.replace_error(<<>>)
+        }
+        data -> Ok(data)
+      }
+      use bits <- result.then(possible_rdb)
       io.print("parsing … ")
-      use #(rdb, _) <- result.then(resp.parse(rdb) |> result.nil_error)
-      let assert resp.BulkData(rdb) = rdb
+      use #(resp, rest) <- result.then(
+        resp.parse(bits) |> result.replace_error(bits),
+      )
+      let assert resp.BulkData(data) = resp
       io.print("checking … ")
-      use rdb <- result.then(rdb.parse(rdb) |> result.nil_error)
+      use _rdb <- result.then(rdb.parse(data) |> result.replace_error(rest))
       io.println("OK")
-      Ok(rdb)
+      Ok(rest)
     }
-    |> result.map_error(fn(_) { io.println("FAIL") })
+    |> result.map_error(fn(rest) {
+      io.println("FAIL")
+      rest
+    })
+    |> result.unwrap_both
 
   io.println("Connected to master: " <> host)
-  #(replid, socket)
+  #(replid, socket, rest)
 }
 
 fn send_command(socket: mug.Socket, parts: List(String)) {
@@ -144,8 +158,8 @@ fn send_command(socket: mug.Socket, parts: List(String)) {
     |> resp.encode
     |> mug.send(socket, _)
   let assert Ok(response) = mug.receive(socket, 10_000)
-  let assert Ok(#(resp.SimpleString(payload), _)) = resp.parse(response)
-  payload
+  let assert Ok(#(resp.SimpleString(payload), rest)) = resp.parse(response)
+  #(payload, rest)
 }
 
 pub fn handle_psync(
