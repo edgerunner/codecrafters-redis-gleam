@@ -178,7 +178,7 @@ fn router(
             replication.handle_psync(replication, id, offset, conn)
           }
 
-          command.Wait(replicas, offset) -> todo
+          command.Wait(_replicas, _offset) -> resp.Integer(0)
         }
         |> send_resp(conn)
       actor.continue(Nil)
