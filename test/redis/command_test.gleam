@@ -224,6 +224,11 @@ pub fn parse_replconf_getack_with_offset_test() {
   |> should_parse_into(command.ReplConf(command.ReplConfGetAck(Some(456))))
 }
 
+pub fn parse_replconf_ack_with_offset_test() {
+  "REPLCONF ACK 456"
+  |> should_parse_into(command.ReplConf(command.ReplConfAck(456)))
+}
+
 pub fn parse_wait_0_60000_test() {
   "WAIT 0 60000"
   |> should_parse_into(command.Wait(replicas: 0, timeout: 60_000))

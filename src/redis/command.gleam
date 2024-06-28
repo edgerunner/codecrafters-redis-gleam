@@ -36,6 +36,7 @@ pub type ReplConfSubcommand {
   ReplConfListeningPort(port: Int)
   ReplConfCapa(capa: Set(String))
   ReplConfGetAck(offset: Option(Int))
+  ReplConfAck(offset: Int)
 }
 
 pub type StreamEntryId {
@@ -224,6 +225,11 @@ fn parse_replconf(
       int.parse(offset)
       |> result.map(Some)
       |> result.map(ReplConfGetAck)
+      |> result.map(ReplConf)
+      |> result.replace_error(InvalidArgument)
+    "ACK", [BulkString(offset)] ->
+      int.parse(offset)
+      |> result.map(ReplConfAck)
       |> result.map(ReplConf)
       |> result.replace_error(InvalidArgument)
 

@@ -174,6 +174,8 @@ fn router(
           command.ReplConf(command.ReplConfGetAck(_)) ->
             resp.SimpleError("ERR Only the master can send this")
 
+          command.ReplConf(command.ReplConfAck(offset)) -> todo
+
           command.PSync(id, offset) -> {
             replication.handle_psync(replication, id, offset, conn)
           }
