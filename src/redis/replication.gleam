@@ -1,5 +1,7 @@
 import bravo.{Public}
 import bravo/bag.{type Bag}
+import counter
+import gleam/bool
 import gleam/bytes_builder
 import gleam/erlang/process.{type Subject}
 import gleam/int
@@ -16,18 +18,33 @@ import mug
 import redis/rdb
 import redis/resp.{type Resp}
 
-pub type Replication {
+pub type Replication(msg) {
   Master(
     master_replid: String,
-    master_repl_offset: Int,
-    slaves: Bag(#(String, glisten.Connection(Nil))),
+    offset: Subject(Offset),
+    slaves: Bag(#(String, glisten.Connection(msg), Subject(msg))),
   )
   Slave(master_replid: String)
 }
 
-pub fn master() -> Replication {
+pub opaque type Offset {
+  IncrementOffset(Int)
+  GetOffset(Subject(Int))
+}
+
+pub fn master() -> Replication(a) {
   let assert Ok(slaves) = bag.new("slaves", 1, Public)
-  Master(master_replid: random_replid(), master_repl_offset: 0, slaves: slaves)
+  let assert Ok(offset_subject) =
+    actor.start(0, fn(msg, current) {
+      case msg {
+        GetOffset(sender) -> {
+          actor.send(sender, current)
+          actor.continue(current)
+        }
+        IncrementOffset(amount) -> actor.continue(current + amount)
+      }
+    })
+  Master(master_replid: random_replid(), offset: offset_subject, slaves: slaves)
 }
 
 fn random_replid() -> String {
@@ -50,7 +67,7 @@ pub fn slave(
   from listening_port: Int,
   with handler: fn(BitArray, Int, mug.Socket) -> Int,
 ) {
-  let when_ready: Subject(Replication) = process.new_subject()
+  let when_ready: Subject(Replication(a)) = process.new_subject()
   let slave_spec: actor.Spec(Int, mug.TcpMessage) =
     actor.Spec(
       init_timeout: 10_000,
@@ -163,13 +180,14 @@ fn send_command(socket: mug.Socket, parts: List(String)) {
 }
 
 pub fn handle_psync(
-  replication: Replication,
+  replication: Replication(msg),
   id: Option(String),
   offset: Int,
-  conn: glisten.Connection(Nil),
-) -> resp.Resp {
+  conn: glisten.Connection(msg),
+  subject: Subject(msg),
+) -> Resp {
   case replication, id, offset {
-    Master(master_repl_id, master_repl_offset, slaves), None, -1 -> {
+    Master(master_repl_id, offset, slaves), None, -1 -> {
       task.async(fn() {
         process.sleep(50)
         let assert Ok(_) =
@@ -180,33 +198,69 @@ pub fn handle_psync(
           |> glisten.send(conn, _)
       })
 
-      bag.insert(slaves, [#(master_repl_id, conn)])
+      bag.insert(slaves, [#(master_repl_id, conn, subject)])
+
+      let master_repl_offset = actor.call(offset, GetOffset, 100)
 
       ["FULLRESYNC", master_repl_id, int.to_string(master_repl_offset)]
       |> string.join(" ")
       |> resp.SimpleString
     }
     Master(_, _, _), _, _ -> todo
-    Slave(_), _, _ -> resp.SimpleError("ERR This instance is a slave")
+    Slave(_), _, _ -> todo
   }
 }
 
-pub fn replicate(replication: Replication, command: Resp) {
+pub fn replicate(replication: Replication(a), command: Resp) {
   case replication {
-    Master(id, _, slaves) -> {
-      use #(_, conn) <- list.filter_map(bag.lookup(slaves, id))
-      resp.encode(command)
-      |> bytes_builder.from_bit_array
-      |> glisten.send(conn, _)
+    Master(id, offset, slaves) -> {
+      let resp = resp.encode(command) |> bytes_builder.from_bit_array
+      actor.send(offset, IncrementOffset(bytes_builder.byte_size(resp)))
+      use #(_, conn, _) <- list.filter_map(bag.lookup(slaves, id))
+      glisten.send(conn, resp)
     }
 
     Slave(_) -> todo
   }
 }
 
-pub fn slave_count(replication: Replication) -> Int {
+pub fn slave_count(replication: Replication(a)) -> Int {
   case replication {
     Master(id, _offset, slaves) -> bag.lookup(slaves, id) |> list.length
     Slave(_) -> 0
+  }
+}
+
+pub fn wait(
+  replication: Replication(Subject(Int)),
+  replicas replicas_required: Int,
+  timeout timeout: Int,
+) {
+  case replication {
+    Master(id, offset, slaves) -> {
+      let master_offset = actor.call(offset, GetOffset, 10)
+      use <- bool.guard(
+        when: master_offset == 0,
+        return: slave_count(replication) |> Ok,
+      )
+      let #(count, done) =
+        counter.start(
+          until: replicas_required,
+          for: timeout,
+          counting: fn(slave_offset) { slave_offset >= master_offset },
+        )
+
+      {
+        use #(_id, _conn, subject) <- list.each(bag.lookup(slaves, id))
+        actor.send(subject, count)
+      }
+      ["REPLCONF", "GETACK", "*"]
+      |> list.map(resp.BulkString)
+      |> resp.Array
+      |> replicate(replication, _)
+
+      process.receive(done, within: timeout + 1000)
+    }
+    Slave(_id) -> todo as "forward to master"
   }
 }

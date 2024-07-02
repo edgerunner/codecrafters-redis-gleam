@@ -1,6 +1,6 @@
 import gleam/bytes_builder
 import gleam/erlang
-import gleam/erlang/process
+import gleam/erlang/process.{type Subject}
 import gleam/int
 import gleam/iterator
 import gleam/list
@@ -17,6 +17,13 @@ import redis/resp.{type Resp}
 import redis/store.{type Table}
 import redis/stream
 import redis/value
+
+type Msg =
+  Subject(Int)
+
+type State {
+  State(waiting_for_offset: List(Subject(Int)), subject: Subject(Subject(Int)))
+}
 
 pub fn main() {
   let config = config.load()
@@ -39,165 +46,191 @@ pub fn main() {
   }
 
   let assert Ok(_) =
-    glisten.handler(fn(_) { #(Nil, None) }, fn(msg, _state, conn) {
-      router(msg, table, config, replication, conn)
-    })
+    glisten.handler(
+      fn(_) {
+        let subject = process.new_subject()
+        let selector =
+          process.new_selector()
+          |> process.selecting(subject, fn(x) { x })
+        #(State([], subject), Some(selector))
+      },
+      fn(msg, state, conn) {
+        router(msg, state, table, config, replication, conn)
+      },
+    )
     |> glisten.serve(config.port)
 
   process.sleep_forever()
 }
 
 fn router(
-  msg: Message(Nil),
+  msg: Message(Msg),
+  state: State,
   table: Table,
   config: Config,
-  replication: Replication,
-  conn: Connection(Nil),
-) {
+  replication: Replication(Msg),
+  conn: Connection(Msg),
+) -> actor.Next(Message(Msg), State) {
+  let send_and_continue = fn(resp) {
+    let _ = send_resp(resp, conn)
+    actor.continue(state)
+  }
+
   case msg {
     Packet(resp_binary) -> {
       let assert Ok(#(resp, _)) = resp_binary |> resp.parse
 
       let assert Ok(command) = command.parse(resp)
-      let assert Ok(_) =
-        case command {
-          command.Ping -> resp.SimpleString("PONG")
-          command.Echo(payload) -> payload
+      case command {
+        command.Ping -> resp.SimpleString("PONG") |> send_and_continue
+        command.Echo(payload) -> send_and_continue(payload)
 
-          command.Set(key: key, value: value, expiry: None) -> {
-            store.insert(table, key, value.String(value), None)
-            replication.replicate(replication, resp)
-            resp.SimpleString("OK")
+        command.Set(key: key, value: value, expiry: None) -> {
+          store.insert(table, key, value.String(value), None)
+          replication.replicate(replication, resp)
+          resp.SimpleString("OK") |> send_and_continue
+        }
+
+        command.Set(key: key, value: value, expiry: Some(expiry)) -> {
+          let deadline = erlang.system_time(erlang.Millisecond) + expiry
+          store.insert(table, key, value.String(value), Some(deadline))
+          replication.replicate(replication, resp)
+          resp.SimpleString("OK") |> send_and_continue
+        }
+
+        command.Get(key) -> {
+          case store.lookup(table, key) {
+            value.None -> resp.Null(resp.NullString)
+            value.String(s) -> resp.BulkString(s)
+            _ ->
+              resp.SimpleError("TODO can only get strings or nothing for now")
           }
-
-          command.Set(key: key, value: value, expiry: Some(expiry)) -> {
-            let deadline = erlang.system_time(erlang.Millisecond) + expiry
-            store.insert(table, key, value.String(value), Some(deadline))
-            replication.replicate(replication, resp)
-            resp.SimpleString("OK")
-          }
-
-          command.Get(key) -> {
-            case store.lookup(table, key) {
-              value.None -> resp.Null(resp.NullString)
-              value.String(s) -> resp.BulkString(s)
-              _ ->
-                resp.SimpleError("TODO can only get strings or nothing for now")
+          |> send_and_continue
+        }
+        command.Config(subcommand) -> {
+          case subcommand {
+            command.ConfigGet(parameter) -> {
+              config.to_string(config, parameter)
+              |> option.map(resp.BulkString)
+              |> option.unwrap(resp.Null(resp.NullString))
+              |> list.wrap
+              |> list.prepend(resp.BulkString(config.parameter_key(parameter)))
+              |> resp.Array
+              |> send_and_continue
             }
           }
-          command.Config(subcommand) -> {
-            case subcommand {
-              command.ConfigGet(parameter) -> {
-                config.to_string(config, parameter)
-                |> option.map(resp.BulkString)
-                |> option.unwrap(resp.Null(resp.NullString))
-                |> list.wrap
-                |> list.prepend(
-                  resp.BulkString(config.parameter_key(parameter)),
+        }
+        command.Keys(None) -> {
+          store.keys(table)
+          |> iterator.map(resp.BulkString)
+          |> iterator.to_list
+          |> resp.Array
+          |> send_and_continue
+        }
+        command.Keys(_) ->
+          resp.SimpleError(
+            "TODO KEYS command with matching will be implemented soon",
+          )
+          |> send_and_continue
+
+        command.Type(key) -> {
+          store.lookup(table, key)
+          |> value.to_type_name
+          |> resp.SimpleString
+          |> send_and_continue
+        }
+
+        command.XAdd(stream_key, entry_id, data) ->
+          {
+            case store.lookup(table, stream_key) {
+              value.None -> {
+                use stream <- result.map(stream.new(stream_key))
+                store.insert(
+                  into: table,
+                  key: stream_key,
+                  value: value.Stream(stream),
+                  deadline: None,
                 )
-                |> resp.Array
+                stream
               }
+              value.Stream(stream) -> Ok(stream)
+              _ -> Error("ERR " <> stream_key <> " is not a stream")
             }
+            |> result.map(stream.handle_xadd(_, entry_id, data))
           }
-          command.Keys(None) -> {
-            store.keys(table)
-            |> iterator.map(resp.BulkString)
-            |> iterator.to_list
-            |> resp.Array
+          |> result.map_error(resp.SimpleError)
+          |> result.unwrap_both
+          |> do(replication.replicate(replication, resp))
+          |> send_and_continue
+
+        command.XRange(stream_key, start, end) ->
+          case store.lookup(table, stream_key) {
+            value.None -> resp.Null(resp.NullArray)
+            value.Stream(stream) -> stream.handle_xrange(stream, start, end)
+            _ -> resp.SimpleError("ERR " <> stream_key <> " is not a stream")
           }
-          command.Keys(_) ->
-            resp.SimpleError(
-              "TODO KEYS command with matching will be implemented soon",
-            )
+          |> send_and_continue
 
-          command.Type(key) -> {
-            store.lookup(table, key)
-            |> value.to_type_name
-            |> resp.SimpleString
-          }
-
-          command.XAdd(stream_key, entry_id, data) ->
-            {
-              case store.lookup(table, stream_key) {
-                value.None -> {
-                  use stream <- result.map(stream.new(stream_key))
-                  store.insert(
-                    into: table,
-                    key: stream_key,
-                    value: value.Stream(stream),
-                    deadline: None,
-                  )
-                  stream
-                }
-                value.Stream(stream) -> Ok(stream)
-                _ -> Error("ERR " <> stream_key <> " is not a stream")
-              }
-              |> result.map(stream.handle_xadd(_, entry_id, data))
-            }
-            |> result.map_error(resp.SimpleError)
-            |> result.unwrap_both
-            |> do(replication.replicate(replication, resp))
-
-          command.XRange(stream_key, start, end) ->
+        command.XRead(streams, block) ->
+          {
+            use #(stream_key, from) <- list.map(streams)
             case store.lookup(table, stream_key) {
               value.None -> resp.Null(resp.NullArray)
-              value.Stream(stream) -> stream.handle_xrange(stream, start, end)
+              value.Stream(stream) ->
+                [
+                  resp.BulkString(stream_key),
+                  option.map(block, stream.handle_xread_block(stream, from, _))
+                    |> option.unwrap(stream.handle_xread(stream, from)),
+                ]
+                |> resp.Array
               _ -> resp.SimpleError("ERR " <> stream_key <> " is not a stream")
             }
-
-          command.XRead(streams, block) ->
-            {
-              use #(stream_key, from) <- list.map(streams)
-              case store.lookup(table, stream_key) {
-                value.None -> resp.Null(resp.NullArray)
-                value.Stream(stream) ->
-                  [
-                    resp.BulkString(stream_key),
-                    option.map(block, stream.handle_xread_block(stream, from, _))
-                      |> option.unwrap(stream.handle_xread(stream, from)),
-                  ]
-                  |> resp.Array
-                _ ->
-                  resp.SimpleError("ERR " <> stream_key <> " is not a stream")
-              }
-            }
-            |> resp.Array
-
-          command.Info(command.InfoReplication) ->
-            info.handle_replication(config.replicaof, replication)
-
-          command.ReplConf(command.ReplConfCapa(_)) -> resp.SimpleString("OK")
-
-          command.ReplConf(command.ReplConfListeningPort(_)) ->
-            resp.SimpleString("OK")
-
-          command.ReplConf(command.ReplConfGetAck(_)) ->
-            resp.SimpleError("ERR Only the master can send this")
-
-          command.ReplConf(command.ReplConfAck(offset)) -> todo
-
-          command.PSync(id, offset) -> {
-            replication.handle_psync(replication, id, offset, conn)
           }
+          |> resp.Array
+          |> send_and_continue
 
-          command.Wait(_replicas, _offset) ->
-            replication.slave_count(replication)
-            |> resp.Integer
+        command.Info(command.InfoReplication) ->
+          info.handle_replication(config.replicaof, replication)
+          |> send_and_continue
+
+        command.ReplConf(command.ReplConfCapa(_)) ->
+          resp.SimpleString("OK") |> send_and_continue
+
+        command.ReplConf(command.ReplConfListeningPort(_)) ->
+          resp.SimpleString("OK") |> send_and_continue
+
+        command.ReplConf(command.ReplConfGetAck(_)) ->
+          resp.SimpleError("ERR Only the master can send this")
+          |> send_and_continue
+
+        command.ReplConf(command.ReplConfAck(ack_offset)) -> {
+          list.each(state.waiting_for_offset, process.send(_, ack_offset))
+          actor.continue(state)
         }
-        |> send_resp(conn)
-      actor.continue(Nil)
+        command.PSync(id, offset) -> {
+          replication.handle_psync(replication, id, offset, conn, state.subject)
+          |> send_and_continue
+        }
+
+        command.Wait(replicas, timeout) ->
+          replication.wait(replication, replicas, timeout)
+          |> result.map(resp.Integer)
+          |> result.unwrap(resp.SimpleError("could not resolve replication"))
+          |> send_and_continue
+      }
     }
-    User(_) -> actor.continue(Nil)
+    User(subject) -> {
+      State(..state, waiting_for_offset: [subject, ..state.waiting_for_offset])
+      |> actor.continue
+    }
   }
 }
 
-fn send_resp(
-  resp: Resp,
-  conn: Connection(a),
-) -> Result(Nil, glisten.SocketReason) {
+fn send_resp(resp: Resp, conn: Connection(msg)) -> Result(Nil, Nil) {
   resp.encode(resp)
   |> bytes_builder.from_bit_array
   |> glisten.send(conn, _)
+  |> result.nil_error
 }
 
 fn do(prev, _x) {

@@ -6,7 +6,7 @@ import redis/resp.{type Resp}
 
 pub fn handle_replication(
   replicaof: Option(#(String, Int)),
-  state: Replication,
+  state: Replication(a),
 ) -> Resp {
   [
     #("role", to_role(replicaof)),
