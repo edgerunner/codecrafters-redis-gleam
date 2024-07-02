@@ -217,6 +217,8 @@ fn router(
           |> result.map(resp.Integer)
           |> result.unwrap(resp.SimpleError("could not resolve replication"))
           |> send_and_continue
+
+        command.Incr(key) -> todo
       }
     }
     User(subject) -> {

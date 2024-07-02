@@ -234,6 +234,11 @@ pub fn parse_wait_0_60000_test() {
   |> should_parse_into(command.Wait(replicas: 0, timeout: 60_000))
 }
 
+pub fn parse_incr_foo_test() {
+  "INCR foo"
+  |> should_parse_into(command.Incr(key: "foo"))
+}
+
 // Helpers
 
 import gleam/list

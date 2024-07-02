@@ -22,6 +22,7 @@ pub type Command {
   ReplConf(ReplConfSubcommand)
   PSync(id: Option(String), offset: Int)
   Wait(replicas: Int, timeout: Int)
+  Incr(key: String)
 }
 
 pub type ConfigSubcommand {
@@ -127,6 +128,8 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     "PSYNC", args -> parse_psync(args)
 
     "WAIT", args -> parse_wait(args)
+
+    "INCR", args -> parse_incr(args)
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }
@@ -257,6 +260,15 @@ fn parse_wait(args: List(Resp)) -> Result(Command, Error) {
       use replicas <- as_int(replicas)
       use timeout <- as_int(timeout)
       Wait(replicas, timeout) |> Ok
+    }
+    _ -> Error(InvalidArgument)
+  }
+}
+
+fn parse_incr(args: List(Resp)) -> Result(Command, Error) {
+  case args {
+    [BulkString(key)] -> {
+      key |> Incr |> Ok
     }
     _ -> Error(InvalidArgument)
   }
