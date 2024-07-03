@@ -102,8 +102,11 @@ fn router(
           case store.lookup(table, key) {
             value.None -> resp.Null(resp.NullString)
             value.String(s) -> resp.BulkString(s)
+            value.Integer(i) -> resp.BulkString(int.to_string(i))
             _ ->
-              resp.SimpleError("TODO can only get strings or nothing for now")
+              resp.SimpleError(
+                "TODO can only get strings, integers or nothing for now",
+              )
           }
           |> send_and_continue
         }
