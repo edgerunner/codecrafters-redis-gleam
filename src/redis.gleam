@@ -219,36 +219,21 @@ fn router(
           |> send_and_continue
 
         command.Incr(key) -> {
+          let incr = fn(int) {
+            store.insert(
+              into: table,
+              key: key,
+              value: value.Integer(int + 1),
+              deadline: None,
+            )
+            resp.Integer(int + 1)
+          }
           case store.lookup(table, key) {
-            value.Integer(int) -> {
-              store.insert(
-                into: table,
-                key: key,
-                value: value.Integer(int + 1),
-                deadline: None,
-              )
-              resp.Integer(int + 1)
-            }
-            value.None -> {
-              store.insert(
-                into: table,
-                key: key,
-                value: value.Integer(1),
-                deadline: None,
-              )
-              resp.Integer(1)
-            }
+            value.Integer(int) -> incr(int)
+            value.None -> incr(0)
             value.String(str) ->
-              {
-                use int <- result.then(int.parse(str))
-                store.insert(
-                  into: table,
-                  key: key,
-                  value: value.Integer(int + 1),
-                  deadline: None,
-                )
-                resp.Integer(int + 1) |> Ok
-              }
+              int.parse(str)
+              |> result.map(incr)
               |> result.replace_error(resp.SimpleError(
                 "ERR value is not an integer or out of range",
               ))
