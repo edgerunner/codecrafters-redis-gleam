@@ -218,7 +218,45 @@ fn router(
           |> result.unwrap(resp.SimpleError("could not resolve replication"))
           |> send_and_continue
 
-        command.Incr(key) -> todo
+        command.Incr(key) -> {
+          case store.lookup(table, key) {
+            value.Integer(int) -> {
+              store.insert(
+                into: table,
+                key: key,
+                value: value.Integer(int + 1),
+                deadline: None,
+              )
+              resp.Integer(int + 1)
+            }
+            value.None -> {
+              store.insert(
+                into: table,
+                key: key,
+                value: value.Integer(1),
+                deadline: None,
+              )
+              resp.Integer(1)
+            }
+            value.String(str) ->
+              {
+                use int <- result.then(int.parse(str))
+                store.insert(
+                  into: table,
+                  key: key,
+                  value: value.Integer(int + 1),
+                  deadline: None,
+                )
+                resp.Integer(int + 1) |> Ok
+              }
+              |> result.replace_error(resp.SimpleError(
+                "ERR value is not an integer or out of range",
+              ))
+              |> result.unwrap_both
+            _ -> resp.SimpleError("ERR value is not an integer or out of range")
+          }
+          |> send_and_continue
+        }
       }
     }
     User(subject) -> {
