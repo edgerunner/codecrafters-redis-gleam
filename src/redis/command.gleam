@@ -23,6 +23,7 @@ pub type Command {
   PSync(id: Option(String), offset: Int)
   Wait(replicas: Int, timeout: Int)
   Incr(key: String)
+  Multi
 }
 
 pub type ConfigSubcommand {
@@ -130,6 +131,10 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     "WAIT", args -> parse_wait(args)
 
     "INCR", args -> parse_incr(args)
+
+    "MULTI", [] -> Ok(Multi)
+
+    "MULTI", _ -> Error(InvalidArgument)
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }
@@ -451,6 +456,8 @@ pub fn to_resp(command: Command) -> Resp {
         }),
       )
       |> resp_command
+
+    Multi -> ["MULTI"] |> resp_command
   }
 }
 

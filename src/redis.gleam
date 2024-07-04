@@ -4,7 +4,7 @@ import gleam/erlang/process.{type Subject}
 import gleam/int
 import gleam/iterator
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
@@ -22,7 +22,11 @@ type Msg =
   Subject(Int)
 
 type State {
-  State(waiting_for_offset: List(Subject(Int)), subject: Subject(Subject(Int)))
+  State(
+    waiting_for_offset: List(Subject(Int)),
+    subject: Subject(Subject(Int)),
+    multi: Option(List(Command)),
+  )
 }
 
 pub fn main() {
@@ -52,7 +56,7 @@ pub fn main() {
         let selector =
           process.new_selector()
           |> process.selecting(subject, fn(x) { x })
-        #(State([], subject), Some(selector))
+        #(State([], subject, None), Some(selector))
       },
       fn(msg, state, conn) {
         router(msg, state, table, config, replication, conn)
@@ -260,6 +264,7 @@ fn command_handler(
       }
       |> send_and_continue
     }
+    command.Multi -> todo
   }
 }
 
