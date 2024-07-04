@@ -15,6 +15,7 @@ import gleam/result
 import gleam/string
 import glisten
 import mug
+import redis/command.{type Command}
 import redis/rdb
 import redis/resp.{type Resp}
 
@@ -211,10 +212,14 @@ pub fn handle_psync(
   }
 }
 
-pub fn replicate(replication: Replication(a), command: Resp) {
+pub fn replicate(replication: Replication(a), command: Command) {
   case replication {
     Master(id, offset, slaves) -> {
-      let resp = resp.encode(command) |> bytes_builder.from_bit_array
+      let resp =
+        command
+        |> command.to_resp
+        |> resp.encode
+        |> bytes_builder.from_bit_array
       actor.send(offset, IncrementOffset(bytes_builder.byte_size(resp)))
       use #(_, conn, _) <- list.filter_map(bag.lookup(slaves, id))
       glisten.send(conn, resp)
@@ -254,9 +259,7 @@ pub fn wait(
         use #(_id, _conn, subject) <- list.each(bag.lookup(slaves, id))
         actor.send(subject, count)
       }
-      ["REPLCONF", "GETACK", "*"]
-      |> list.map(resp.BulkString)
-      |> resp.Array
+      command.ReplConf(command.ReplConfGetAck(None))
       |> replicate(replication, _)
 
       process.receive(done, within: timeout + 1000)
