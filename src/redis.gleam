@@ -107,14 +107,14 @@ fn command_handler(
     command.Set(key: key, value: value, expiry: None) -> {
       store.insert(table, key, value.String(value), None)
       replication.replicate(replication, command)
-      resp.SimpleString("OK") |> send_and_continue
+      send_and_continue(ok)
     }
 
     command.Set(key: key, value: value, expiry: Some(expiry)) -> {
       let deadline = erlang.system_time(erlang.Millisecond) + expiry
       store.insert(table, key, value.String(value), Some(deadline))
       replication.replicate(replication, command)
-      resp.SimpleString("OK") |> send_and_continue
+      send_and_continue(ok)
     }
 
     command.Get(key) -> {
@@ -215,11 +215,9 @@ fn command_handler(
       info.handle_replication(config.replicaof, replication)
       |> send_and_continue
 
-    command.ReplConf(command.ReplConfCapa(_)) ->
-      resp.SimpleString("OK") |> send_and_continue
+    command.ReplConf(command.ReplConfCapa(_)) -> send_and_continue(ok)
 
-    command.ReplConf(command.ReplConfListeningPort(_)) ->
-      resp.SimpleString("OK") |> send_and_continue
+    command.ReplConf(command.ReplConfListeningPort(_)) -> send_and_continue(ok)
 
     command.ReplConf(command.ReplConfGetAck(_)) ->
       resp.SimpleError("ERR Only the master can send this")
@@ -265,11 +263,13 @@ fn command_handler(
       |> send_and_continue
     }
     command.Multi -> {
-      let assert Ok(_) = resp.SimpleString("OK") |> send_resp(conn)
+      let _ = send_resp(ok, conn)
       actor.continue(State(..state, multi: Some([])))
     }
   }
 }
+
+const ok = resp.SimpleString("OK")
 
 fn send_resp(resp: Resp, conn: Connection(msg)) -> Result(Nil, Nil) {
   resp.encode(resp)
