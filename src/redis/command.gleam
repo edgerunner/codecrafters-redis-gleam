@@ -361,3 +361,99 @@ fn then(
   |> result.replace_error(error)
   |> result.then(callback)
 }
+
+pub fn to_resp(command: Command) -> Resp {
+  case command {
+    Ping -> SimpleString("PING")
+    Echo(resp) -> [BulkString("ECHO"), resp] |> Array
+    Set(key, value, None) -> ["SET", key, value] |> resp_command
+    Set(key, value, Some(expiry)) ->
+      ["SET", key, value, "PX", int.to_string(expiry)] |> resp_command
+    Get(key) -> ["GET", key] |> resp_command
+    Keys(pattern) -> ["KEYS", pattern |> option.unwrap("*")] |> resp_command
+    Type(key) -> ["TYPE", key] |> resp_command
+    Config(ConfigGet(config)) ->
+      ["CONFIG", "GET", config.parameter_key(config)] |> resp_command
+    Info(InfoReplication) -> ["INFO", "REPLICATION"] |> resp_command
+    ReplConf(ReplConfCapa(capabilities)) ->
+      ["REPLCONF", "CAPA", ..set.to_list(capabilities)]
+      |> resp_command
+    ReplConf(ReplConfAck(offset)) ->
+      ["REPLCONF", "ACK", int.to_string(offset)]
+      |> resp_command
+    ReplConf(ReplConfGetAck(offset)) ->
+      [
+        "REPLCONF",
+        "GETACK",
+        option.map(offset, int.to_string) |> option.unwrap("*"),
+      ]
+      |> resp_command
+    ReplConf(ReplConfListeningPort(port)) ->
+      ["REPLCONF", "listeningport", int.to_string(port)]
+      |> resp_command
+    PSync(id, offset) ->
+      ["PSYNC", option.unwrap(id, "?"), int.to_string(offset)]
+      |> resp_command
+    Wait(replicas, timeout) ->
+      ["WAIT", int.to_string(replicas), int.to_string(timeout)]
+      |> resp_command
+    Incr(key) -> ["INCR", key] |> resp_command
+    // Stream specials
+    XAdd(stream, id, data) ->
+      [
+        "XADD",
+        stream,
+        case id {
+          Unspecified -> "*"
+          Timestamp(timestamp) -> int.to_string(timestamp) <> "-*"
+          Explicit(timestamp, sequence) ->
+            int.to_string(timestamp) <> "-" <> int.to_string(sequence)
+        },
+        ..list.flat_map(data, fn(d) { [d.0, d.1] })
+      ]
+      |> resp_command
+    XRange(stream, start, end) ->
+      [
+        "XRANGE",
+        stream,
+        case start {
+          Unspecified -> "-"
+          Timestamp(timestamp) -> int.to_string(timestamp)
+          Explicit(timestamp, sequence) ->
+            int.to_string(timestamp) <> "-" <> int.to_string(sequence)
+        },
+        case end {
+          Unspecified -> "+"
+          Timestamp(timestamp) -> int.to_string(timestamp)
+          Explicit(timestamp, sequence) ->
+            int.to_string(timestamp) <> "-" <> int.to_string(sequence)
+        },
+      ]
+      |> resp_command
+    XRead(streams, block) ->
+      [
+        "XREAD",
+        ..case block {
+          Some(duration) -> ["BLOCK", int.to_string(duration)]
+          None -> []
+        }
+      ]
+      |> list.append(["STREAMS"])
+      |> list.append(list.map(streams, fn(e) { e.0 }))
+      |> list.append(
+        list.map(streams, fn(e) {
+          case e.1 {
+            Unspecified -> "$"
+            Timestamp(timestamp) -> int.to_string(timestamp)
+            Explicit(timestamp, sequence) ->
+              int.to_string(timestamp) <> "-" <> int.to_string(sequence)
+          }
+        }),
+      )
+      |> resp_command
+  }
+}
+
+fn resp_command(parts: List(String)) -> Resp {
+  parts |> list.map(BulkString) |> Array
+}

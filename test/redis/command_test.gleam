@@ -239,6 +239,69 @@ pub fn parse_incr_foo_test() {
   |> should_parse_into(command.Incr(key: "foo"))
 }
 
+pub fn ping_to_resp_test() {
+  command.Ping
+  |> command.to_resp
+  |> should.equal(resp.SimpleString("PING"))
+}
+
+pub fn echo_to_resp_test() {
+  command.Echo(resp.BulkString("hello"))
+  |> command.to_resp
+  |> should.equal(command_resp("ECHO hello"))
+}
+
+pub fn set_to_resp_test() {
+  command.Set(key: "kei", value: "valui", expiry: None)
+  |> command.to_resp
+  |> should.equal(command_resp("SET kei valui"))
+}
+
+pub fn set_with_expiry_to_resp_test() {
+  command.Set(key: "kei", value: "valui", expiry: Some(350))
+  |> command.to_resp
+  |> should.equal(command_resp("SET kei valui PX 350"))
+}
+
+pub fn get_to_resp_test() {
+  command.Get(key: "kei")
+  |> command.to_resp
+  |> should.equal(command_resp("GET kei"))
+}
+
+pub fn keys_star_to_resp_test() {
+  command.Keys(None)
+  |> command.to_resp
+  |> should.equal(command_resp("KEYS *"))
+}
+
+pub fn keys_foo_to_resp_test() {
+  command.Keys(Some("foo"))
+  |> command.to_resp
+  |> should.equal(command_resp("KEYS foo"))
+}
+
+pub fn type_foo_to_resp_test() {
+  command.Type("foo")
+  |> command.to_resp
+  |> should.equal(command_resp("TYPE foo"))
+}
+
+pub fn config_get_port_to_resp_test() {
+  command.Config(command.ConfigGet(config.Port))
+  |> command.to_resp
+  |> should.equal(command_resp("CONFIG GET port"))
+}
+
+pub fn xread_with_block_test() {
+  command.XRead(
+    [#("foo", command.Unspecified), #("bar", command.Explicit(12_345_678, 1))],
+    Some(5000),
+  )
+  |> command.to_resp
+  |> should.equal(command_resp("XREAD BLOCK 5000 STREAMS foo bar $ 12345678-1"))
+}
+
 // Helpers
 
 import gleam/list
