@@ -264,7 +264,10 @@ fn command_handler(
       }
       |> send_and_continue
     }
-    command.Multi -> todo
+    command.Multi -> {
+      let assert Ok(_) = resp.SimpleString("OK") |> send_resp(conn)
+      actor.continue(State(..state, multi: Some([])))
+    }
   }
 }
 
