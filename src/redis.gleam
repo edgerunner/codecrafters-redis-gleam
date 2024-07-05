@@ -85,6 +85,10 @@ fn router(
           command_handler(command, state, table, config, replication, conn)
         Some(queue) -> {
           case command {
+            command.Discard -> {
+              let _ = send_resp(ok, conn)
+              actor.continue(State(..state, multi: None))
+            }
             command.Exec -> {
               let _ =
                 queue.length(queue)
@@ -298,6 +302,9 @@ fn command_handler(
     }
     command.Exec ->
       resp.SimpleError("ERR EXEC without MULTI") |> send_and_continue
+
+    command.Discard ->
+      resp.SimpleError("ERR DISCARD without MULTI") |> send_and_continue
   }
 }
 

@@ -25,6 +25,7 @@ pub type Command {
   Incr(key: String)
   Multi
   Exec
+  Discard
 }
 
 pub type ConfigSubcommand {
@@ -138,6 +139,9 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
 
     "EXEC", [] -> Ok(Exec)
     "EXEC", _ -> Error(InvalidArgument)
+
+    "DISCARD", [] -> Ok(Discard)
+    "DISCARD", _ -> Error(InvalidArgument)
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }
@@ -462,6 +466,7 @@ pub fn to_resp(command: Command) -> Resp {
 
     Multi -> ["MULTI"] |> resp_command
     Exec -> ["EXEC"] |> resp_command
+    Discard -> ["DISCARD"] |> resp_command
   }
 }
 

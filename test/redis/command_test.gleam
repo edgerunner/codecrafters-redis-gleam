@@ -244,6 +244,11 @@ pub fn parse_exec_test() {
   |> should_parse_into(command.Exec)
 }
 
+pub fn parse_discard_test() {
+  "DISCARD"
+  |> should_parse_into(command.Discard)
+}
+
 pub fn parse_incr_foo_test() {
   "INCR foo"
   |> should_parse_into(command.Incr(key: "foo"))
