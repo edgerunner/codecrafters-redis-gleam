@@ -24,6 +24,7 @@ pub type Command {
   Wait(replicas: Int, timeout: Int)
   Incr(key: String)
   Multi
+  Exec
 }
 
 pub type ConfigSubcommand {
@@ -133,8 +134,10 @@ fn parse_list(list: List(Resp)) -> Result(Command, Error) {
     "INCR", args -> parse_incr(args)
 
     "MULTI", [] -> Ok(Multi)
-
     "MULTI", _ -> Error(InvalidArgument)
+
+    "EXEC", [] -> Ok(Exec)
+    "EXEC", _ -> Error(InvalidArgument)
 
     unknown, _ -> Error(UnknownCommand(unknown))
   }
@@ -458,6 +461,7 @@ pub fn to_resp(command: Command) -> Resp {
       |> resp_command
 
     Multi -> ["MULTI"] |> resp_command
+    Exec -> ["EXEC"] |> resp_command
   }
 }
 
