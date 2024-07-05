@@ -269,7 +269,7 @@ fn command_handler(
     command.Exec -> {
       case state.multi {
         None -> resp.SimpleError("ERR EXEC without MULTI") |> send_and_continue
-        Some(_) -> todo
+        Some(_) -> resp.Array([]) |> send_and_continue
       }
     }
   }
