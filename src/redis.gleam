@@ -267,10 +267,11 @@ fn command_handler(
       actor.continue(State(..state, multi: Some([])))
     }
     command.Exec -> {
-      case state.multi {
-        None -> resp.SimpleError("ERR EXEC without MULTI") |> send_and_continue
-        Some(_) -> resp.Array([]) |> send_and_continue
+      let _ = case state.multi {
+        None -> resp.SimpleError("ERR EXEC without MULTI") |> send_resp(conn)
+        Some(_) -> resp.Array([]) |> send_resp(conn)
       }
+      actor.continue(State(..state, multi: None))
     }
   }
 }
