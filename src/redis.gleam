@@ -86,7 +86,20 @@ fn router(
         Some(queue) -> {
           case command {
             command.Exec -> {
-              let _ = resp.Array([]) |> send_resp(conn)
+              let _ =
+                queue.length(queue)
+                |> resp.array_header
+                |> bytes_builder.from_bit_array
+                |> glisten.send(conn, _)
+              queue.to_list(queue)
+              |> list.each(command_handler(
+                _,
+                state,
+                table,
+                config,
+                replication,
+                conn,
+              ))
               actor.continue(State(..state, multi: None))
             }
             _ -> {

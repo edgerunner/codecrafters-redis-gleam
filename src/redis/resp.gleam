@@ -235,3 +235,7 @@ pub fn to_list(resp: Resp) -> List(Resp) {
     Null(_) -> []
   }
 }
+
+pub fn array_header(length: Int) -> BitArray {
+  <<"*":utf8, encode_length(length):bits>>
+}
