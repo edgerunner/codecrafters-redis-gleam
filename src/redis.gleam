@@ -6,6 +6,7 @@ import gleam/iterator
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
+import gleam/queue.{type Queue}
 import gleam/result
 import glisten.{type Connection, type Message, Packet, User}
 import mug
@@ -25,7 +26,7 @@ type State {
   State(
     waiting_for_offset: List(Subject(Int)),
     subject: Subject(Subject(Int)),
-    multi: Option(List(Command)),
+    multi: Option(Queue(Command)),
   )
 }
 
@@ -79,7 +80,23 @@ fn router(
     Packet(resp_binary) -> {
       let assert Ok(#(resp, _)) = resp_binary |> resp.parse
       let assert Ok(command) = command.parse(resp)
-      command_handler(command, state, table, config, replication, conn)
+      case state.multi {
+        None ->
+          command_handler(command, state, table, config, replication, conn)
+        Some(queue) -> {
+          case command {
+            command.Exec -> {
+              let _ = resp.Array([]) |> send_resp(conn)
+              actor.continue(State(..state, multi: None))
+            }
+            _ -> {
+              let _ = resp.SimpleString("QUEUED") |> send_resp(conn)
+              State(..state, multi: Some(queue.push_back(queue, command)))
+              |> actor.continue
+            }
+          }
+        }
+      }
     }
     User(subject) -> {
       State(..state, waiting_for_offset: [subject, ..state.waiting_for_offset])
@@ -264,15 +281,10 @@ fn command_handler(
     }
     command.Multi -> {
       let _ = send_resp(ok, conn)
-      actor.continue(State(..state, multi: Some([])))
+      actor.continue(State(..state, multi: Some(queue.new())))
     }
-    command.Exec -> {
-      let _ = case state.multi {
-        None -> resp.SimpleError("ERR EXEC without MULTI") |> send_resp(conn)
-        Some(_) -> resp.Array([]) |> send_resp(conn)
-      }
-      actor.continue(State(..state, multi: None))
-    }
+    command.Exec ->
+      resp.SimpleError("ERR EXEC without MULTI") |> send_and_continue
   }
 }
 
